@@ -1,0 +1,1 @@
+time, id, camPosX, camPosY, camPosZ, camQuatX, camQuatY, camQuatZ, camQuatW, con1PosX,  con1PosY, con1PosZ, con1QuatX, con1QuatY, con1QuatZ,  con1QuatW, con2PosX, con2PosY, con2PosZ, con2QuatX, con2QuatY, con2QuatZ, con2QuatW, presenting, color
