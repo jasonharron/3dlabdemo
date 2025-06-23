@@ -39,7 +39,7 @@ let roomState = {
   rotation: 0,
   boat: true,
   overhang: false,
-  owl: false
+  owl: false,
 };
 ////////////////////////
 // Socket Connection //
@@ -172,7 +172,6 @@ io.sockets.on("connection", (socket) => {
   });
 
   socket.on("requestRoomState", function () {
-    
     //Disabled due to bugs
     //socket.emit("roomState", roomState);
   });
@@ -269,7 +268,7 @@ io.sockets.on("connection", (socket) => {
         prevData = JSON.stringify(data);
       }
     }
-        socket.broadcast.emit("updatePosFromServer", data);
+    socket.broadcast.emit("updatePosFromServer", data);
   });
 
   socket.on("addMesh-detected", function (data) {
@@ -315,7 +314,7 @@ io.sockets.on("connection", (socket) => {
 
   socket.on("wireframeButtonToServer", function (data) {
     socket.broadcast.emit("wireframeButtonPressed", data);
-      roomState.wireframe = !roomState.wireframe;
+    roomState.wireframe = !roomState.wireframe;
     if (enableLog) {
       let emit = "wireframeButtonPressed";
       logSocket(data, emit, socket.id);
@@ -333,7 +332,7 @@ io.sockets.on("connection", (socket) => {
 
   socket.on("gcodeExtrudeButtonToServer", function (data) {
     socket.broadcast.emit("gcodeExtrudeButtonPressed", data);
-        roomState.extrude = !roomState.extrude;
+    roomState.extrude = !roomState.extrude;
     if (enableLog) {
       let emit = "gcodeExtrudeButtonPressed";
       logSocket(data, emit, socket.id);
@@ -342,7 +341,7 @@ io.sockets.on("connection", (socket) => {
 
   socket.on("gcodeTravelButtonToServer", function (data) {
     socket.broadcast.emit("gcodeTravelButtonPressed", data);
-        roomState.travel = !roomState.travel;
+    roomState.travel = !roomState.travel;
     if (enableLog) {
       let emit = "gcodeTravelButtonPressed";
       logSocket(data, emit, socket.id);
@@ -361,8 +360,8 @@ io.sockets.on("connection", (socket) => {
 
   socket.on("gcodeTreeButtonToServer", function (data) {
     socket.broadcast.emit("gcodeTreeButtonPressed", data);
-        roomState.tree = !roomState.tree;
-console.log(socket.id);
+    roomState.tree = !roomState.tree;
+    console.log(socket.id);
     if (enableLog) {
       let emit = "gcodeTreeButtonPressed";
       logSocket(data, emit, socket.id);
@@ -407,7 +406,7 @@ console.log(socket.id);
 
   socket.on("toggleTestToServer", function (data) {
     socket.broadcast.emit("toggleTest", data);
-        roomState.boat = false;
+    roomState.boat = false;
     roomState.overhang = !roomState.overhang;
     roomState.owl = false;
     if (enableLog) {
@@ -418,7 +417,7 @@ console.log(socket.id);
 
   socket.on("toggleOwlToServer", function (data) {
     socket.broadcast.emit("toggleOwl", data);
-        roomState.boat = false;
+    roomState.boat = false;
     roomState.overhang = false;
     roomState.owl = !roomState.owl;
     if (enableLog) {
@@ -429,7 +428,7 @@ console.log(socket.id);
 
   socket.on("togglePrinterToServer", function (data) {
     socket.broadcast.emit("togglePrinter", data);
-        roomState.printer = !roomState.printer;
+    roomState.printer = !roomState.printer;
     if (enableLog) {
       let emit = "togglePrinter";
       logSocket(data, emit, socket.id);
@@ -446,7 +445,7 @@ console.log(socket.id);
 
   socket.on("togglePhysicsToServer", function (data) {
     socket.broadcast.emit("togglePhysics", data);
-        roomState.physics = !roomState.physics;
+    roomState.physics = !roomState.physics;
     if (enableLog) {
       let emit = "togglePhysics";
       logSocket(data, emit, socket.id);
@@ -525,11 +524,129 @@ console.log(socket.id);
     }
   });
 
+  socket.on("button1ToServer", function (data) {
+    socket.broadcast.emit("button1ToClient", data);
+    if (enableLog) {
+      let emit = "button1ToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+
+  socket.on("button2ToServer", function (data) {
+    socket.broadcast.emit("button2ToClient", data);
+    if (enableLog) {
+      let emit = "button2ToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+
+  socket.on("button3ToServer", function (data) {
+    socket.broadcast.emit("button3ToClient", data);
+    if (enableLog) {
+      let emit = "button3ToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+
+  socket.on("button4ToServer", function (data) {
+    socket.broadcast.emit("button4ToClient", data);
+    if (enableLog) {
+      let emit = "button4ToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+  
+    socket.on("button5ToServer", function (data) {
+    socket.broadcast.emit("button5ToClient", data);
+    if (enableLog) {
+      let emit = "button5ToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+  
+      socket.on("updatePaintToServer", function (data) {
+    socket.broadcast.emit("updatePaintToClient", data);
+    if (enableLog) {
+      let emit = "updatePaintToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+  
+        socket.on("updatePaintStartToServer", function (data) {
+    socket.broadcast.emit("updatePaintStartToClient", data);
+    if (enableLog) {
+      let emit = "updatePaintStartToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+
+  socket.on("exitButtonToServer", function (data) {
+    socket.broadcast.emit("exitButtonToClient", data);
+    if (enableLog) {
+      let emit = "exitButtonToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+
+  socket.on("resetButtonToServer", function (data) {
+    socket.broadcast.emit("resetButtonToClient", data);
+    if (enableLog) {
+      let emit = "resetButtonToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+
+  socket.on("centerOfRotationToServer", function (data) {
+    socket.broadcast.emit("centerOfRotationToClient", data);
+    if (enableLog) {
+      let emit = "centerOfRotationToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+  
+  socket.on("updateProteinGroupToServer", function (data) {
+    socket.broadcast.emit("updateProteinGroupToClient", data);
+    if (enableLog) {
+      let emit = "updateProteinGroupToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+  socket.on("gravityButtonToServer", function (data) {
+    socket.broadcast.emit("gravityButtonToClient", data);
+    if (enableLog) {
+      let emit = "gravityButtonToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+  
+    socket.on("occlusionButtonToServer", function (data) {
+    socket.broadcast.emit("occlusionButtonToClient", data);
+    if (enableLog) {
+      let emit = "occlusionButtonToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+  
+    socket.on("clearPaintButtonToServer", function (data) {
+    socket.broadcast.emit("clearPaintButtonToClient", data);
+    if (enableLog) {
+      let emit = "clearPaintButtonToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+  socket.on("addMeshDetectionPhysicsToServer", function (data) {
+    socket.broadcast.emit("addMeshDetectionPhysicsToClient", data);
+    if (enableLog) {
+      let emit = "addMeshDetectionPhysicsToClient";
+      logSocket(data, emit, socket.id);
+    }
+  });
+
   socket.on("toggleGuideToServer", function (data) {
     socket.broadcast.emit("toggleGuide", data);
   });
-  
-    socket.on("pauseGuideToServer", function (data) {
+
+  socket.on("pauseGuideToServer", function (data) {
     socket.broadcast.emit("pauseGuide", data);
   });
 });
@@ -613,15 +730,6 @@ function logSocket(data, emit, id) {
   let dataString = JSON.stringify(data);
   //var timeNow = Date.now() - clock;
   let dataToLog =
-    Date.now() +
-    "," +
-    id +
-    "," +
-    -999 +
-    "," +
-    emit +
-    "," +
-    dataString +
-    "\r\n";
+    Date.now() + "," + id + "," + -999 + "," + emit + "," + dataString + "\r\n";
   logData.push(dataToLog);
 }

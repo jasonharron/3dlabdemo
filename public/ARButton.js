@@ -66,7 +66,7 @@ class ARButton {
 
 				currentSession.removeEventListener( 'end', onSessionEnded );
 
-				button.textContent = 'START AR';
+				button.textContent = 'START XR';
 				sessionInit.domOverlay.root.style.display = 'none';
 
 				currentSession = null;
@@ -81,7 +81,7 @@ class ARButton {
 			button.style.left = 'calc(50% - 50px)';
 			button.style.width = '200px';
 
-			button.textContent = 'START AR';
+			button.textContent = 'START XR';
 
 			button.onmouseenter = function () {
 
