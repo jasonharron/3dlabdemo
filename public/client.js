@@ -1,30 +1,77 @@
 import * as THREE from "three";
 
-import { BoxLineGeometry } from "three/addons/geometries/BoxLineGeometry.js"; //Used to find the center of the buffer geometry boxes
-import { XRButton } from "three/addons/webxr/XRButton.js";
+import { BoxLineGeometry } from "/examples/jsm/geometries/BoxLineGeometry.js"; //Used to find the center of the buffer geometry boxes
+import { XRButton } from "/examples/jsm/webxr/XRButton.js";
 import { ARButton } from "/ARButton.js";
-import { XRControllerModelFactory } from "three/addons/webxr/XRControllerModelFactory.js";
-//import { RapierPhysics } from "/RapierPhysics.js";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { GCodeLoader } from "three/addons/loaders/GCodeLoader.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js"; // for new avatars
+import { XRControllerModelFactory } from "/examples/jsm/webxr/XRControllerModelFactory.js";
+import { OrbitControls } from "/examples/jsm/controls/OrbitControls.js";
+import { GCodeLoader } from "/examples/jsm/loaders/GCodeLoader.js";
+import { GLTFLoader } from "/examples/jsm/loaders/GLTFLoader.js"; // for new avatars
 import { GCodeLoaderLayer } from "/GCodeLoaderLayer.js";
 import { GCodeLoaderLayerBoat } from "/GCodeLoaderLayerBoat.js";
 import { GCodeLoaderNoLayer } from "/GCodeLoaderNoLayer.js";
 import { GCodeLoaderPrinter } from "/GCodeLoaderPrinter.js";
-import { createText } from "three/addons/webxr/Text2D.js";
-import { STLLoader } from "three/addons/loaders/STLLoader.js";
-import { SimplifyModifier } from "three/addons/modifiers/SimplifyModifier.js";
-import WebGPURenderer from "three/addons/renderers/webgpu/WebGPURenderer.js";
+import { createText } from "/examples/jsm/webxr/Text2D.js";
+import { STLLoader } from "/examples/jsm/loaders/STLLoader.js";
+//import { SimplifyModifier } from "https://unpkg.com/three@0.163.0/examples/jsm/modifiers/SimplifyModifier.js";
 import { BoxGeometry, Matrix4, Mesh, MeshBasicMaterial, Object3D } from "three";
-
+import { phy } from "./build/Phy.module.js";
+import { TubePainter } from "/TubePainter.js";
+import { XRHandModelFactory } from "/examples/jsm/webxr/XRHandModelFactory.js";
+import * as ThreeMeshUI from "/three-mesh-ui.module.js";
 import {
   World,
   System,
   Component,
   TagComponent,
   Types,
-} from "three/addons/libs/ecsy.module.js";
+} from "https://unpkg.com/three@0.163.0/examples/jsm/libs/ecsy.module.js";
+
+let button1, button2, button3, button4, button5;
+let exitButton, resetButton, gravityButton, occlusionButton, clearPaintButton;
+let button4Active = false;
+let button5Active = false;
+let menuGroup = new THREE.Group();
+let proteinGroup = new THREE.Group();
+let exitGroup = new THREE.Group();
+let resetGroup = new THREE.Group();
+let gravityGroup = new THREE.Group();
+let paintGroup = new THREE.Group();
+let occlusionGroup = new THREE.Group();
+let shadowGroup = new THREE.Group();
+let wireframemeshNumber = 0;
+let siteLogo, galton;
+let mode = "menu";
+let meshNumber = 0;
+let planeNumber = 0;
+let ballsGalton = 500;
+let ballsLab = 150;
+let gravity = true;
+let occlusion = true;
+//let occlusionMesh, shadowMesh;
+let previousActiveMesh;
+let objectPosition = new THREE.Vector3();
+let controllerSqueezeRotation = new THREE.Euler();
+let boxMesh;
+let proteinModel;
+let printerPathArray = [];
+let avatarModel = new THREE.Group();
+let cursor = new THREE.Vector3();
+let painter1 = new TubePainter();
+let painter2 = new TubePainter();
+let hand1, hand2;
+
+// Track whether the trigger is squeezed
+
+// Initial controller rotation state
+let initialRotation = { x: 0, y: 0, z: 0 };
+let initialPosition1 = new THREE.Vector3();
+let initialPosition2 = new THREE.Vector3();
+let drop = 0;
+let dropRate = 5;
+let galtonBalls = false;
+let rightHand, leftHand, head;
+//let sphereInter;
 
 let stlMeshBoat, stlMeshTest, stlMeshOwl;
 let wireframeMeshBoat, wireframeMeshTest, wireframeMeshOwl;
@@ -43,7 +90,7 @@ let gcodeMeshBoat,
 
 let enablePhysics = true; //Allows Rapier Physics
 let enableBalls = false; //Requires enablePhysics = true;
-let newAvatars = false; //Mozzila Hubs Avatar
+let newAvatar = false; //ReadyPlayerMe Avatar
 let playerPhysics = true; //Add physics to players, balls bounce off players
 let clients = 30; //Set max number of client bodies/controllers
 let loadingDebug = false; //Console logs percentage done when loading assets
@@ -61,26 +108,11 @@ let showVR = false;
 let showUser = 1;
 let activeMesh = "boat";
 let endLog = 0;
-let inClassDemo = false; //Moves starting point when join session
+let inClassDemo = true; //Moves starting point when join session
 let minXCal = 7.4;
 let maxXCal = 7.9;
 let minYCal = 2.4;
 let maxYCal = 2.8;
-
-/////////////////
-//   Rapier   //
-////////////////
-//const RAPIER_PATH = "https://cdn.skypack.dev/@dimforge/rapier3d-compat@0.11.2";
-//NOTE: Alternative path to Rapier Physics min file
-const RAPIER_PATH =
-  "https://cdn.skypack.dev/pin/@dimforge/rapier3d-compat@v0.11.2-2ynsEzwjLv57bqvhulDB/mode=imports,min/optimized/@dimforge/rapier3d-compat.js";
-
-const frameRate = 90;
-
-const _scale = new THREE.Vector3(1, 1, 1);
-const ZERO = new THREE.Vector3();
-
-let RAPIER = null;
 
 const meshes = [];
 const meshMap = new WeakMap();
@@ -92,13 +124,10 @@ const meshMap = new WeakMap();
 let unselectedColor = 0x355c7d;
 let selectedColor = 0x00aaaa;
 
-let initialRotation;
 let isRotating = false;
 let tourGuide = 0;
 
 let csvData = [];
-
-let desk;
 
 let intersectedStartPos = new THREE.Vector3();
 let intersectedCurrentPos = new THREE.Vector3();
@@ -195,8 +224,6 @@ let camera, scene, renderer;
 let controller1, controller2;
 let controllerGrip1, controllerGrip2;
 let controllerGrip3, controllerGrip4;
-let hand1, hand2;
-let handModel1, handModel2;
 let conLeftSelecting = false;
 let conRightSelecting = false;
 let conStartingDist;
@@ -408,44 +435,7 @@ class XRPlanes extends Object3D {
             height < maxYCal
           ) {
             socket.emit("debug", "***Found it!!!***");
-            // socket.emit("debug", mesh);
-            //   calibrationMatrix = matrix;
 
-            /*
-            scene.children.forEach((child) => {
-              if (child.isMesh) {
-                                  socket.emit("debug", "Found a mesh!");
-                if (child.geometry.width > 4.7) {
-                  socket.emit("debug", "Passed 1");
-                  if (child.width < 4.8) {
-                    socket.emit("debug", "Passed 2");
-                    if (child.depth > 2.4) {
-                      socket.emit("debug", "Passed 3");
-                      if (child.depth < 2.5) {
-                        socket.emit("debug", "Passed 4");
-                        socket.emit("debug", child.width);
-                        socket.emit("debug", child.position);
-                        // socket.emit("debug", child.position);
-                        socket.emit("debug", mesh.width);
-                        socket.emit("debug", mesh.position);
-                        // socket.emit("debug", line.position);
-                        // socket.emit("debug", line);
-                        //myPos.x = -line.position.x;
-                        //myPos.z = line.position.z;
-                        //myPos.z = ;
-                        //  myRot.y = -line.rotation._y;
-                        //myRot.y = line.rotation._y;
-                        //myRot.x = -line.rotation._x;
-                        //myRot.z = -line.rotation._z;
-
-                        teleportCamera();
-                      }
-                    }
-                  }
-                }
-              }
-            });
-            */
             scene.traverse(function (object) {
               // Check if the object has a 'width' property
               if (object !== undefined) {
@@ -474,98 +464,87 @@ class XRPlanes extends Object3D {
                     depth2 > minYCal &&
                     depth2 < maxYCal
                   ) {
-                    socket.emit("debug", "Mesh - Headset");
-                    socket.emit("debug", mesh.position);
-                    socket.emit("debug", "Object - JSON");
-                    socket.emit("debug", object.position);
+                    if (object.position.x != 0) {
+                      /*
+                    object.updateMatrix();
+                    object.updateMatrixWorld(true); // true to force update
 
-                    function rotatePoint(x, z, angleInRadians) {
-                      var cosTheta = Math.cos(angleInRadians);
-                      var sinTheta = Math.sin(angleInRadians);
+                    // Now you can access the updated transformation matrix
+                    var matrix = object.matrixWorld;
 
-                      var newX = x * cosTheta - z * sinTheta;
-                      var newZ = x * sinTheta + z * cosTheta;
+                    // Extract position from the matrix
+                    var position = new THREE.Vector3();
+                    position.setFromMatrixPosition(matrix);
 
-                      return { x: newX, z: newZ };
-                    }
+                    // Extract rotation from the matrix
+                    var quaternion = new THREE.Quaternion();
+                    quaternion.setFromRotationMatrix(matrix);
 
-                    var rotationAngle = mesh.rotation._z - object.rotation._z;
+                    // Convert quaternion to Euler angles if needed
+                    var eulerFix = new THREE.Euler();
+                    eulerFix.setFromQuaternion(quaternion);
+                    object.setRotationFromEuler(eulerFix);
+                    object.position.set(position.x, position.y, position.z);
+                    */
 
-                    // Original coordinates as a Vector2
-                    var originalPoint = new THREE.Vector2(
-                      mesh.position.x,
-                      mesh.position.z
-                    );
+                      socket.emit("debug", "Mesh - Headset");
+                      socket.emit("debug", mesh.rotation);
+                      socket.emit("debug", "Object - JSON");
+                      socket.emit("debug", object.name);
+                      socket.emit("debug", object.rotation);
 
-                    // Rotation angle in radians
+                      function rotatePoint(x, z, angleInRadians) {
+                        let cosTheta = Math.cos(angleInRadians);
+                        let sinTheta = Math.sin(angleInRadians);
 
-                    // Apply rotation to the original point
-                    originalPoint.rotateAround(
-                      new THREE.Vector2(0, 0),
-                      rotationAngle
-                    );
+                        let newX = x * cosTheta - z * sinTheta;
+                        let newZ = x * sinTheta + z * cosTheta;
 
-                    // Get the new coordinates
-                    var newX = originalPoint.x;
-                    var newZ = originalPoint.y;
+                        return { x: newX, z: newZ };
+                      }
 
-                    // socket.emit("debug", newX);
-                    // socket.emit("debug", newZ);
+                      let rotationAngle = mesh.rotation._z - object.rotation._z;
 
-                    var rotatedPointMesh = rotatePoint(
-                      mesh.position.x,
-                      mesh.position.z,
-                      rotationAngle
-                    );
-
-                    var rotatedPointObject = rotatePoint(
-                      object.position.x,
-                      object.position.z,
-                      rotationAngle
-                    );
-                    socket.emit("debug", "Rotated Mesh");
-                    socket.emit("debug", rotatedPointMesh);
-                    //  socket.emit("debug", "Object - JSON");
-                    //   socket.emit("debug", rotatedPointObject);
-                    myRot.y = mesh.rotation._z - object.rotation._z;
-
-                    //First teleport for rotation
-                    if (true) {
-                      const offsetPosition = {
-                        x: myPos.x,
-                        y: myPos.y,
-                        z: myPos.z,
-                        w: 1,
-                      };
-                      const euler = new THREE.Euler(
-                        myRot.x,
-                        myRot.y,
-                        myRot.z,
-                        "XYZ"
+                      // Original coordinates as a Vector2
+                      let originalPoint = new THREE.Vector2(
+                        mesh.position.x,
+                        mesh.position.z
                       );
-                      const offsetRotation = new THREE.Quaternion();
-                      offsetRotation.setFromEuler(euler);
-                      const transform = new XRRigidTransform(
-                        offsetPosition,
-                        offsetRotation
+
+                      // Rotation angle in radians
+
+                      // Apply rotation to the original point
+                      originalPoint.rotateAround(
+                        new THREE.Vector2(0, 0),
+                        rotationAngle
                       );
-                      const teleportSpaceOffset =
-                        baseReferenceSpace.getOffsetReferenceSpace(transform);
 
-                      renderer.xr.setReferenceSpace(teleportSpaceOffset);
-                      baseReferenceSpace = teleportSpaceOffset;
-                      myPos.x = 0;
-                      myPos.y = 0;
-                      myPos.z = 0;
-                      myRot.x = 0;
-                      myRot.y = 0;
-                      myRot.z = 0;
+                      // Get the new coordinates
+                      let newX = originalPoint.x;
+                      let newZ = originalPoint.y;
 
-                      //Second teleport for X and Z
+                      // socket.emit("debug", newX);
+                      // socket.emit("debug", newZ);
+
+                      let rotatedPointMesh = rotatePoint(
+                        mesh.position.x,
+                        mesh.position.z,
+                        rotationAngle
+                      );
+
+                      let rotatedPointObject = rotatePoint(
+                        object.position.x,
+                        object.position.z,
+                        rotationAngle
+                      );
+                      // socket.emit("debug", "Rotated Mesh");
+                      // socket.emit("debug", rotatedPointMesh);
+                      //  socket.emit("debug", "Object - JSON");
+                      //  socket.emit("debug", rotatedPointObject);
+                      myRot.y = mesh.rotation._z - object.rotation._z;
+
+                      //First teleport for rotation
                       if (true) {
-                        myPos.x = rotatedPointMesh.x - object.position.x;
-                        myPos.y = mesh.position.y - object.position.y;
-                        myPos.z = rotatedPointMesh.z - object.position.z;
                         const offsetPosition = {
                           x: myPos.x,
                           y: myPos.y,
@@ -578,6 +557,7 @@ class XRPlanes extends Object3D {
                           myRot.z,
                           "XYZ"
                         );
+
                         const offsetRotation = new THREE.Quaternion();
                         offsetRotation.setFromEuler(euler);
                         const transform = new XRRigidTransform(
@@ -595,6 +575,47 @@ class XRPlanes extends Object3D {
                         myRot.x = 0;
                         myRot.y = 0;
                         myRot.z = 0;
+
+                        //Second teleport for X and Z
+                        if (true) {
+                          myPos.x = rotatedPointMesh.x - object.position.x;
+                          myPos.y = mesh.position.y - object.position.y;
+                          myPos.z = rotatedPointMesh.z - object.position.z;
+                          socket.emit("debug", myPos.x);
+                          socket.emit("debug", myPos.y);
+                          socket.emit("debug", myPos.z);
+                          const offsetPosition = {
+                            x: myPos.x,
+                            y: myPos.y,
+                            z: myPos.z,
+                            w: 1,
+                          };
+                          const euler = new THREE.Euler(
+                            myRot.x,
+                            myRot.y,
+                            myRot.z,
+                            "XYZ"
+                          );
+                          const offsetRotation = new THREE.Quaternion();
+                          offsetRotation.setFromEuler(euler);
+                          const transform = new XRRigidTransform(
+                            offsetPosition,
+                            offsetRotation
+                          );
+                          const teleportSpaceOffset =
+                            baseReferenceSpace.getOffsetReferenceSpace(
+                              transform
+                            );
+
+                          renderer.xr.setReferenceSpace(teleportSpaceOffset);
+                          baseReferenceSpace = teleportSpaceOffset;
+                          myPos.x = 0;
+                          myPos.y = 0;
+                          myPos.z = 0;
+                          myRot.x = 0;
+                          myRot.y = 0;
+                          myRot.z = 0;
+                        }
                       }
                     }
                   }
@@ -614,7 +635,7 @@ class XRPlanes extends Object3D {
           meshPhysics.position.setFromMatrixPosition(matrix);
           meshPhysics.quaternion.setFromRotationMatrix(matrix);
           //scene.add(meshPhysics);
-          physics.addMesh(meshPhysics);
+          //physics.addMesh(meshPhysics);
 
           currentPlanes.set(plane, mesh);
 
@@ -716,12 +737,9 @@ const clock = new THREE.Clock();
 const loadingManager = new THREE.LoadingManager(() => {
   const loadingScreen = document.getElementById("loading-screen");
   loadingScreen.classList.add("fade-out");
-
-  // optional: remove loader from DOM via event listener
   loadingScreen.addEventListener("transitionend", onTransitionEnd);
 });
 
-//let loadedItems = 0;
 const countDiv = document.getElementById("count");
 
 function updateCount(itemsLoaded, itemsTotal) {
@@ -786,7 +804,6 @@ function init() {
   const container = document.createElement("div");
   document.body.appendChild(container);
 
-  socket.emit("debug", "Starting init()");
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x505050);
 
@@ -796,10 +813,8 @@ function init() {
     0.1,
     100
   );
-  console.log(camera);
-  camera.position.set(-3, 15, 0);
+  camera.position.set(-3.5, 3, 1.75);
   camera.lookAt(0, 0, 0);
-
   camera.add(listener);
 
   const loadingManager = new THREE.LoadingManager(() => {
@@ -892,13 +907,45 @@ function init() {
 
   scene.add(new THREE.HemisphereLight(0xbbbbbb, 0x888888, 5));
 
-  const light = new THREE.DirectionalLight(0xffffff, 3);
-  light.position.set(1, 1, 1).normalize();
+  const light = new THREE.DirectionalLight(0xffffff, 5);
+  light.position.set(0, 6, -3);
+  light.castShadow = true;
+  light.shadow.camera.top = 3;
+  light.shadow.camera.bottom = -3;
+  light.shadow.camera.right = 3;
+  light.shadow.camera.left = -3;
+  light.shadow.mapSize.set(4096, 4096);
   scene.add(light);
 
   const light2 = new THREE.DirectionalLight(0xffffff, 3);
-  light2.position.set(1, 1, -2).normalize();
+  light2.position.set(3, 3, 3);
+  light2.castShadow = true;
+  light2.shadow.camera.top = 3;
+  light2.shadow.camera.bottom = -3;
+  light2.shadow.camera.right = 3;
+  light2.shadow.camera.left = -3;
+  light2.shadow.mapSize.set(4096, 4096);
   scene.add(light2);
+
+  const light3 = new THREE.DirectionalLight(0xffffff, 3);
+  light3.position.set(-3, 3, 3);
+  light3.castShadow = true;
+  light3.shadow.camera.top = 3;
+  light3.shadow.camera.bottom = -3;
+  light3.shadow.camera.right = 3;
+  light3.shadow.camera.left = -3;
+  light3.shadow.mapSize.set(4096, 4096);
+  scene.add(light3);
+
+  const light4 = new THREE.DirectionalLight(0xffffff, 3);
+  light4.position.set(0, -2, -2);
+  light4.castShadow = true;
+  light4.shadow.camera.top = 3;
+  light4.shadow.camera.bottom = -3;
+  light4.shadow.camera.right = 3;
+  light4.shadow.camera.left = -3;
+  light4.shadow.mapSize.set(4096, 4096);
+  //scene.add(light4);
 
   scene.add(lineGroup); //lineGroup is used for the white edges on the walls and furniture
   scene.add(furnitureGroup);
@@ -908,28 +955,10 @@ function init() {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setAnimationLoop(render);
+  //renderer.shadowMap.enabled = true;
   //renderer.setClearColor(0xabcdef, 0);
   renderer.xr.enabled = true;
   container.appendChild(renderer.domElement);
-
-  const deskGeo = new THREE.BoxGeometry(
-    1.9860635995864868,
-    0.8908738493919373,
-    0.8678317070007324
-  );
-  const deskMat = new THREE.MeshPhysicalMaterial({
-    roughness: 1,
-    color: 4013373,
-    transparent: true,
-    opacity: 0.85,
-  });
-  desk = new THREE.Mesh(deskGeo, deskMat);
-  //furnitureGroup.add(desk);
-  const deskMatrix = new THREE.Matrix4();
-  desk.position.x = 1.6;
-  desk.position.y = 0.45;
-  desk.position.z = 1.8;
-  desk.rotation.y = Math.PI / 2;
   renderer.xr.addEventListener("sessionstart", function (event) {
     baseReferenceSpace = renderer.xr.getReferenceSpace();
     scene.background = null;
@@ -939,8 +968,8 @@ function init() {
     //socket.emit("debug", calibrationMatrix);
     addLocalClientToVR();
     if (inClassDemo) {
-      myPos.x = -1.5;
-      myPos.z = -0.8;
+      myPos.x = -1.75;
+      myPos.z = -0.5;
       myRot.y = Math.PI / 2;
       teleportCamera();
     }
@@ -948,7 +977,7 @@ function init() {
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.maxDistance = 15;
-  controls.target.y = 1.6;
+  controls.target.set(2, 1.5, 1.75);
   controls.update();
 
   function onSelect() {
@@ -980,20 +1009,67 @@ function init() {
   reticle.visible = false;
   scene.add(reticle);
 
-  function onSqueezeStartLeft() {
+  function onSqueezeStart(event) {
+    //Painter
     this.userData.isSqueezing = true;
+    this.userData.positionAtSqueezeStart = this.position.y;
+    this.userData.scaleAtSqueezeStart = this.scale.x;
+    //Original
+
+    const controller = event.target;
+    controller.userData.isSqueezing = true;
+
+    const intersections = getIntersections(controller);
+
+    if (intersections.length > 0) {
+      const intersection = intersections[0];
+
+      const object = intersection.object;
+      object.material.emissive.b = 1;
+      controller.attach(centerOfRotation);
+
+      controller.userData.selected = object;
+    }
+
+    controller.userData.targetRayMode = event.data.targetRayMode;
   }
 
-  function onSqueezeEndLeft() {
-    this.userData.isSqueezing = false;
-  }
+  function onSqueezeEnd(event) {
+    const controller = event.target;
+    controller.userData.isSqueezing = false;
+    controllerSqueezeRotation = controller.rotation;
 
-  function onSqueezeStartRight() {
-    this.userData.isSqueezing = true;
-  }
+    if (controller.userData.selected !== undefined) {
+      const object = controller.userData.selected;
+      object.material.emissive.b = 0;
+      scene.attach(centerOfRotation);
 
-  function onSqueezeEndRight() {
-    this.userData.isSqueezing = false;
+      socket.emit("centerOfRotationToServer", {
+        CORposX: centerOfRotation.position.x,
+        CORposY: centerOfRotation.position.y,
+        CORposZ: centerOfRotation.position.z,
+        CORrotX: centerOfRotation.rotation.x,
+        CORrotY: centerOfRotation.rotation.y,
+        CORrotZ: centerOfRotation.rotation.z,
+      });
+
+      // Apply the group's rotation to the child
+      socket.emit("updateProteinGroupToServer", {
+        quat: centerOfRotation.quaternion,
+      });
+      if (activeMesh == "protein") {
+        proteinGroup.applyQuaternion(centerOfRotation.quaternion);
+      } else if (activeMesh == "boat") {
+        boatMeshes.applyQuaternion(centerOfRotation.quaternion);
+      } else if (activeMesh == "test") {
+        testMeshes.applyQuaternion(centerOfRotation.quaternion);
+      } else if (activeMesh == "owl") {
+        owlMeshes.applyQuaternion(centerOfRotation.quaternion);
+      }
+
+      centerOfRotation.rotation.set(0, 0, 0);
+      controller.userData.selected = undefined;
+    }
   }
 
   document.addEventListener("mousemove", onPointerMove);
@@ -1004,12 +1080,21 @@ function init() {
   document.addEventListener("touchend", onTouchEnd, false);
   document.addEventListener("wheel", onMouseWheel, false);
 
+  scene.add(painter1.mesh);
+  painter1.mesh.visible = false; //Tube
+  //painter1.mesh.material.visible = false; //Sphere attached to controller
+
+  scene.add(painter2.mesh);
+  painter2.mesh.visible = false;
+  // painter2.mesh.material.visible = false; //Sphere attached to controller
+
   controller1 = renderer.xr.getController(0);
   controller1.name = "left";
   controller1.addEventListener("selectstart", onSelectStart);
   controller1.addEventListener("selectend", onSelectEnd);
-  controller1.addEventListener("squeezestart", onSqueezeStartLeft);
-  controller1.addEventListener("squeezeend", onSqueezeEndLeft);
+  controller1.addEventListener("squeezestart", onSqueezeStart);
+  controller1.addEventListener("squeezeend", onSqueezeEnd);
+  controller1.userData.painter = painter1;
 
   scene.add(controller1);
 
@@ -1017,12 +1102,28 @@ function init() {
   controller2.name = "right";
   controller2.addEventListener("selectstart", onSelectStart);
   controller2.addEventListener("selectend", onSelectEnd);
-  controller2.addEventListener("squeezestart", onSqueezeStartRight);
-  controller2.addEventListener("squeezeend", onSqueezeEndRight);
+  controller2.addEventListener("squeezestart", onSqueezeStart);
+  controller2.addEventListener("squeezeend", onSqueezeEnd);
+  controller2.userData.painter = painter2;
 
   scene.add(controller2);
 
+  const pivot = new THREE.Mesh(new THREE.IcosahedronGeometry(0.01, 3));
+  pivot.name = "pivot";
+  pivot.position.z = -0.05;
+
+  const group = new THREE.Group();
+  group.add(pivot);
+
+  controller1.add(group.clone());
+  controller2.add(group.clone());
+  let pivot1 = controller1.getObjectByName("pivot");
+  let pivot2 = controller2.getObjectByName("pivot");
+  pivot1.visible = false;
+  pivot2.visible = false;
+
   const controllerModelFactory = new XRControllerModelFactory();
+  const handModelFactory = new XRHandModelFactory();
 
   controllerGrip1 = renderer.xr.getControllerGrip(0);
   controllerGrip1.add(
@@ -1030,11 +1131,22 @@ function init() {
   );
   scene.add(controllerGrip1);
 
+  hand1 = renderer.xr.getHand(0);
+  hand1.add(handModelFactory.createHandModel(hand1, "boxes"));
+
+  scene.add(hand1);
+  console.log("Hand1");
+  console.log(hand1);
+
   controllerGrip2 = renderer.xr.getControllerGrip(1);
   controllerGrip2.add(
     controllerModelFactory.createControllerModel(controllerGrip2)
   );
   scene.add(controllerGrip2);
+
+  hand2 = renderer.xr.getHand(1);
+  hand2.add(handModelFactory.createHandModel(hand2, "boxes"));
+  scene.add(hand2);
 
   //Raycast Line
   const geometryLine = new THREE.BufferGeometry().setFromPoints([
@@ -1059,15 +1171,37 @@ function init() {
           if (showVR === false) {
             showVR = true;
             showID = userArray[showUser].id;
-            physics.setMeshPosition(cubeGroup, pos, showUser);
-            physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
-            physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
+            phy.change({
+              name: "cube" + showUser,
+              pos: [pos.x, pos.y, pos.z],
+            });
+
+            phy.change({
+              name: "controller" + 2 * showUser,
+              pos: [pos.x, pos.y, pos.z],
+            });
+            phy.change({
+              name: "controller" + (2 * showUser + 1),
+              pos: [pos.x, pos.y, pos.z],
+            });
           } else {
             showVR = false;
             let lastClient = clients - 2;
-            physics.setMeshPosition(cubeGroup, pos, lastClient);
-            physics.setMeshPosition(controllerGroup, pos, 2 * lastClient);
-            physics.setMeshPosition(controllerGroup, pos, 2 * lastClient + 1);
+
+            phy.change({
+              name: "cube" + lastClient,
+              pos: [pos.x, pos.y, pos.z],
+            });
+
+            phy.change({
+              name: "controller" + lastClient,
+              pos: [pos.x, pos.y, pos.z],
+            });
+            phy.change({
+              name: "controller" + (lastClient + 1),
+              pos: [pos.x, pos.y, pos.z],
+            });
+
             let showVRLC1 = scene.getObjectByName("showVRLine1");
             let showVRLC2 = scene.getObjectByName("showVRLine2");
             if (showVRLC1 !== undefined) {
@@ -1076,89 +1210,203 @@ function init() {
             if (showVRLC1 !== undefined) {
               showVRLC2.position.x = 1000;
             }
-            camera.position.set(-3, 15, 0);
+            camera.position.set(-3.5, 3, 1.75);
             camera.lookAt(0, 0, 0);
+            showVR = false;
           }
           break;
         case "1":
           showVR = true;
           showUser = 1;
           showID = userArray[showUser].id;
-          physics.setMeshPosition(cubeGroup, pos, showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
+          phy.change({
+            name: "cube" + showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + 2 * showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + (2 * showUser + 1),
+            pos: [pos.x, pos.y, pos.z],
+          });
           break;
         case "2":
           showVR = true;
           showUser = 2;
           showID = userArray[showUser].id;
-          physics.setMeshPosition(cubeGroup, pos, showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
+          phy.change({
+            name: "cube" + showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + 2 * showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + (2 * showUser + 1),
+            pos: [pos.x, pos.y, pos.z],
+          });
           break;
         case "3":
           showVR = true;
           showUser = 3;
-          showID = userArray[showUser].id;
-          physics.setMeshPosition(cubeGroup, pos, showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
+          phy.change({
+            name: "cube" + showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + 2 * showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + (2 * showUser + 1),
+            pos: [pos.x, pos.y, pos.z],
+          });
+          //physics.setMeshPosition(cubeGroup, pos, showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
           break;
         case "4":
           showVR = true;
           showUser = 4;
           showID = userArray[showUser].id;
-          physics.setMeshPosition(cubeGroup, pos, showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
+          phy.change({
+            name: "cube" + showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + 2 * showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + (2 * showUser + 1),
+            pos: [pos.x, pos.y, pos.z],
+          });
+          //physics.setMeshPosition(cubeGroup, pos, showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
           break;
         case "5":
           showVR = true;
           showUser = 5;
           showID = userArray[showUser].id;
-          physics.setMeshPosition(cubeGroup, pos, showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
+          phy.change({
+            name: "cube" + showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + 2 * showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + (2 * showUser + 1),
+            pos: [pos.x, pos.y, pos.z],
+          });
+          //physics.setMeshPosition(cubeGroup, pos, showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
           break;
         case "6":
           showVR = true;
           showUser = 6;
           showID = userArray[showUser].id;
-          physics.setMeshPosition(cubeGroup, pos, showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
+          phy.change({
+            name: "cube" + showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + 2 * showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + (2 * showUser + 1),
+            pos: [pos.x, pos.y, pos.z],
+          });
+          //physics.setMeshPosition(cubeGroup, pos, showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
           break;
         case "7":
           showVR = true;
           showUser = 7;
           showID = userArray[showUser].id;
-          physics.setMeshPosition(cubeGroup, pos, showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
+          phy.change({
+            name: "cube" + showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + 2 * showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + (2 * showUser + 1),
+            pos: [pos.x, pos.y, pos.z],
+          });
+          //physics.setMeshPosition(cubeGroup, pos, showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
           break;
         case "8":
           showVR = true;
           showUser = 8;
           showID = userArray[showUser].id;
-          physics.setMeshPosition(cubeGroup, pos, showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
+          phy.change({
+            name: "cube" + showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + 2 * showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + (2 * showUser + 1),
+            pos: [pos.x, pos.y, pos.z],
+          });
+          //physics.setMeshPosition(cubeGroup, pos, showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
           break;
         case "9":
           showVR = true;
           showUser = 9;
           showID = userArray[showUser].id;
-          physics.setMeshPosition(cubeGroup, pos, showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
+          phy.change({
+            name: "cube" + showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + 2 * showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + (2 * showUser + 1),
+            pos: [pos.x, pos.y, pos.z],
+          });
+          //physics.setMeshPosition(cubeGroup, pos, showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
           break;
         case "0":
           showVR = true;
           showUser = 0;
           showID = userArray[showUser].id;
-          physics.setMeshPosition(cubeGroup, pos, showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
-          physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
+          phy.change({
+            name: "cube" + showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + 2 * showUser,
+            pos: [pos.x, pos.y, pos.z],
+          });
+          phy.change({
+            name: "controller" + (2 * showUser + 1),
+            pos: [pos.x, pos.y, pos.z],
+          });
+          //physics.setMeshPosition(cubeGroup, pos, showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser);
+          //physics.setMeshPosition(controllerGroup, pos, 2 * showUser + 1);
           break;
       }
     }
@@ -1169,16 +1417,38 @@ function init() {
   window.addEventListener("resize", onWindowResize);
   exitText = createText(FPS, 0.3);
   exitText.position.set(0, 2, -2.5);
-  //exitText.visible = false;
   scene.add(exitText);
+  /* 
+  				const geometry = new THREE.SphereGeometry( 0.1 );
+				const material = new THREE.MeshBasicMaterial( { color: 0xff0000 } );
+
+				sphereInter = new THREE.Mesh( geometry, material );
+				sphereInter.visible = false;
+				scene.add( sphereInter );
+  
+*/
 }
 
 ///////Functions
 function onSelectStart(event) {
   //
+  //Painter
+  this.updateMatrixWorld(true);
 
+  const pivot = this.getObjectByName("pivot");
+  cursor.setFromMatrixPosition(pivot.matrixWorld);
+
+  const painter = this.userData.painter;
+  painter.moveTo(cursor);
+
+  //Original
   const controller = event.target;
-  //selectActive = 1;
+
+  socket.emit("updatePaintStartToServer", {
+    cursor: cursor,
+    controllerName: controller.name,
+  });
+
   start_x = controller.position.x;
   start_y = controller.position.y;
   start_z = controller.position.z;
@@ -1273,6 +1543,8 @@ function onMouseDown(event) {
       }
       if (object.name !== activeMesh) {
         object.material.emissive.b = 1;
+        //object.onClick();
+        //object.pressSound?.play();
       }
       if (object.pressed == "fully_pressed") {
         object.pressed = "recovering";
@@ -1444,13 +1716,34 @@ function getIntersections(controller) {
 function raycasterFunction(raycaster) {
   let raycasterArray = [];
   if (consoleMesh !== undefined) {
-    raycaster.intersectObjects(consoleMesh.children, false, raycasterArray);
+    if (raycasterArray.length === 0 && exitGroup.visible === true) {
+      raycaster.intersectObjects(exitGroup.children, false, raycasterArray);
+    }
+    if (raycasterArray.length === 0 && resetGroup.visible === true) {
+      raycaster.intersectObjects(resetGroup.children, false, raycasterArray);
+    }
+    if (raycasterArray.length === 0 && gravityGroup.visible === true) {
+      raycaster.intersectObjects(gravityGroup.children, false, raycasterArray);
+    }
+    if (raycasterArray.length === 0 && paintGroup.visible === true) {
+      raycaster.intersectObjects(paintGroup.children, false, raycasterArray);
+    }
+    if (raycasterArray.length === 0 && consoleMesh.visible === true) {
+      raycaster.intersectObjects(consoleMesh.children, false, raycasterArray);
+    }
     if (raycasterArray.length > 0) {
       return raycasterArray;
     }
     if (raycasterArray.length === 0 && buttonGroup.visible === true) {
       raycaster.intersectObjects(buttonGroup.children, false, raycasterArray);
     }
+    if (raycasterArray.length === 0 && menuGroup.visible === true) {
+      raycaster.intersectObjects(menuGroup.children, false, raycasterArray);
+    }
+    if (raycasterArray.length === 0 && proteinGroup.visible === true) {
+      raycaster.intersectObjects(proteinGroup.children, false, raycasterArray);
+    }
+
     if (raycasterArray.length === 0 && activeMesh === "boat") {
       raycaster.intersectObjects(
         boundingBoxesBoat.children,
@@ -1508,6 +1801,18 @@ function intersectObjects(controller) {
   if (line !== undefined) {
     const intersections = getIntersections(controller);
     if (intersections !== undefined) {
+      /*    	
+      if ( intersections.length > 0 ) {
+
+					sphereInter.visible = true;
+					sphereInter.position.copy( intersections[ 0 ].point );
+
+				} else {
+
+					sphereInter.visible = false;
+
+				}
+        */
       if (intersections.length > 0) {
         const intersection = intersections[0];
         const object = intersection.object;
@@ -1594,23 +1899,17 @@ function onPointerMove(event) {
 
 function render(timestamp, frame) {
   //Check to see if if any buttons have been pressed on the controllers
+  ThreeMeshUI.update();
+  phy.doStep(timestamp);
+  if (galtonBalls) {
+    dropBalls();
+  }
+
+  //Checks controller buttons for input
   dollyMove();
 
   //Checks for raycast from the controllers
   checkIntersections();
-
-  //Shows calibration mode in mixed reality
-  /*
-  if (questPro) {
-    if (calibrationMode) {
-      lineGroup.visible = true;
-      furnitureGroup.visible = true;
-    } else {
-      lineGroup.visible = false;
-      furnitureGroup.visible = false;
-    }
-  }
-  */
 
   //Checks if balls need to be fired in balls are enabled
   if (enableBalls) {
@@ -1618,6 +1917,19 @@ function render(timestamp, frame) {
     handleController(controller2);
   }
 
+  if (button5Active) {
+    handlePainter(controller1);
+    handlePainter(controller2);
+  }
+
+  //Checks whether controller squeeze is pressed, for moving objects
+  if (controller1.userData.isSqueezing) {
+    squeezeController(controller1);
+  }
+  if (controller2.userData.isSqueezing) {
+    squeezeController(controller2);
+  }
+  /*
   //Starts logFile if logFileTest is true
   if (logFileTest && endLog === 0) {
     playLog(timestamp);
@@ -1626,83 +1938,46 @@ function render(timestamp, frame) {
   if (endLog) {
     endLogFunction();
   }
+  
+  */
 
+  //Sends socket.emit with userArray[0]'s data to server if the user is in VR or AR
   if (renderer.xr.isPresenting === true) {
     var XRCamera = renderer.xr.getCamera();
 
-    if (!playerPhysics) {
+    if (playerPhysics) {
       socket.emit("updatePos", {
         con1Pos: controller1.position,
-        con1Rot: controller1.rotation,
+        con1Quat: controller1.quaternion,
         con2Pos: controller2.position,
-        con2Rot: controller2.rotation,
+        con2Quat: controller2.quaternion,
         camPos: XRCamera.position,
+        camQuat: XRCamera.quaternion,
+        con1Rot: controller1.rotation,
+        con2Rot: controller2.rotation,
         camRot: XRCamera.rotation,
         name: userArray[0].id,
         vr: userArray[0].vr,
         presenting: userArray[0].presenting,
         id: userArray[0].id,
-        con1: userArray[0].con1,
-        con2: userArray[0].con2,
-        //matrix: matrix,
+        color: userArray[0].color,
       });
     }
-    if (playerPhysics) {
-      if (cubeGroup !== undefined) {
-        let mesh = cubeGroup;
-        let body = meshMap.get(mesh);
-        let index = 0;
-        body = body[index];
-
-        const position = body.translation();
-        const rotation = body.rotation();
-
-        socket.emit("updatePos", {
-          con1Pos: controller1.position,
-          con1Quat: controller1.quaternion,
-          con2Pos: controller2.position,
-          con2Quat: controller2.quaternion,
-          camPos: XRCamera.position,
-          camQuat: XRCamera.quaternion,
-          name: userArray[0].id,
-          vr: userArray[0].vr,
-          presenting: userArray[0].presenting,
-          id: userArray[0].id,
-          color: userArray[0].color,
-        });
-
-        //Code to add physics colliders to the client in VR mode
-        let dataPos = XRCamera.position;
-        let dataQuat = XRCamera.quaternion;
-        let position0 = new THREE.Vector3();
-        position0.x = dataPos.x;
-        position0.y = dataPos.y - 0.4;
-        position0.z = dataPos.z;
-        let quaternion0 = new THREE.Quaternion();
-        quaternion0.x = dataQuat[0];
-        quaternion0.y = dataQuat[1];
-        quaternion0.z = dataQuat[2];
-        quaternion0.w = dataQuat[3];
-        physics.setMeshPositionAndRotation(
-          myCubeGroup,
-          position0,
-          quaternion0,
-          0
-        );
-      }
-    }
-    //    }
   }
 
   if (renderer.xr.isPresenting === true) {
     updateMyCube();
-    //var cube = scene.getObjectByName(userArray[0].id);
-    //var XRCamera = renderer.xr.getCamera();
   }
 
   if (frame) {
     const referenceSpace = renderer.xr.getReferenceSpace();
     const session = renderer.xr.getSession();
+
+    if (button4Active) {
+      processMeshes(timestamp, frame);
+    }
+  }
+  /*
 
     if (hitTestSourceRequested === false) {
       session.requestReferenceSpace("viewer").then(function (referenceSpace) {
@@ -1743,6 +2018,7 @@ function render(timestamp, frame) {
   }
 
   //Update Stats
+*/
   frameCount = frameCount + 1;
   if (frameCount >= 200) {
     FPS = Math.round(1000 / ((timestamp - timePrevFrame) / 200));
@@ -1772,7 +2048,6 @@ function render(timestamp, frame) {
     //teleportCamera();
     updateRot = false;
   }
-  //console.log(controllerGrip1.position);
 }
 ////////////////////////////////
 //  Check for Intersections  //
@@ -1902,35 +2177,14 @@ function checkIntersections() {
       let angle = (Math.atan2(zDist, xDist) * 180) / Math.PI;
       if (angle >= 0 && angle <= 180) {
         centerOfRotation.rotation.y = objectStartRotation + totalDist * 5;
-        /*
-        stlMesh.rotation.z = objectStartRotation + totalDist * 5;
-        wireframeMesh.rotation.z = objectStartRotation + totalDist * 5;
-        gcodeMeshParent.rotation.y =
-          objectStartRotation - Math.PI / 2 + totalDist * 5; //-Math.PI/2 is to correct rotation for Y-axis on Gcode
-        boundingBoxes.rotation.y =
-          objectStartRotation - Math.PI / 2 + totalDist * 5;
-          */
       } else {
         centerOfRotation.rotation.y = objectStartRotation - totalDist * 5;
-        /*
-        stlMesh.rotation.z = objectStartRotation - totalDist * 5;
-        wireframeMesh.rotation.z = objectStartRotation - totalDist * 5;
-        gcodeMeshParent.rotation.y =
-          objectStartRotation - Math.PI / 2 - totalDist * 5; //-Math.PI/2 is to correct rotation for Y-axis on Gcode
-        boundingBoxes.rotation.y =
-          objectStartRotation - Math.PI / 2 - totalDist * 5;
-          */
       }
       socket.emit("rotateBoatToServer", {
         centerOfRotationY: centerOfRotation.rotation.y,
-        // stlMeshZ: stlMesh.rotation.z,
-        // wireframeMeshZ: wireframeMesh.rotation.z,
-        // gcodeMeshParentY: gcodeMeshParent.rotation.y,
-        // boudningBoxesY: boundingBoxes.rotation.y,
       });
     } else if (allowRotationRight) {
       if (isRotating) {
-        //stlMesh.rotation.z = initialRotation + (controller2.rotation.y - intersectedStartRot) * 1.5;
       }
       conCurrentPos = new THREE.Vector3();
       controller2.getWorldPosition(conCurrentPos);
@@ -1940,31 +2194,11 @@ function checkIntersections() {
       let angle = (Math.atan2(zDist, xDist) * 180) / Math.PI;
       if (angle >= 0 && angle <= 180) {
         centerOfRotation.rotation.y = objectStartRotation + totalDist * 5;
-        /*
-        stlMesh.rotation.z = objectStartRotation + totalDist * 5;
-        wireframeMesh.rotation.z = objectStartRotation + totalDist * 5;
-        gcodeMeshParent.rotation.y =
-          objectStartRotation - Math.PI / 2 + totalDist * 5; //-Math.PI/2 is to correct rotation for Y-axis on Gcode
-        boundingBoxes.rotation.y =
-          objectStartRotation - Math.PI / 2 + totalDist * 5;
-          */
       } else {
         centerOfRotation.rotation.y = objectStartRotation - totalDist * 5;
-        /*
-        stlMesh.rotation.z = objectStartRotation - totalDist * 5;
-        wireframeMesh.rotation.z = objectStartRotation - totalDist * 5;
-        gcodeMeshParent.rotation.y =
-          objectStartRotation - Math.PI / 2 - totalDist * 5; //-Math.PI/2 is to correct rotation for Y-axis on Gcode
-        boundingBoxes.rotation.y =
-          objectStartRotation - Math.PI / 2 - totalDist * 5;
-          */
       }
       socket.emit("rotateBoatToServer", {
         centerOfRotationY: centerOfRotation.rotation.y,
-        // stlMeshZ: stlMesh.rotation.z,
-        // wireframeMeshZ: wireframeMesh.rotation.z,
-        // gcodeMeshParentY: gcodeMeshParent.rotation.y,
-        // boudningBoxesY: boundingBoxes.rotation.y,
       });
     }
   }
@@ -1975,119 +2209,65 @@ function checkIntersections() {
 /////////////////////////
 
 async function initPhysics() {
+  phy.init({
+    type: "RAPIER",
+    worker: true,
+    scene: scene,
+    callback: startDemo,
+    path: "/build/",
+  });
+
   if (enablePhysics) {
-    physics = await RapierPhysics();
-
-    // Spheres
-    if (enableBalls) {
-      const geometry = new THREE.IcosahedronGeometry(0.05, 3);
-      const material = new THREE.MeshLambertMaterial();
-
-      spheres = new THREE.InstancedMesh(geometry, material, 100);
-      spheres.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // will be updated every frame
-      scene.add(spheres);
-
-      const matrix = new THREE.Matrix4();
-      const color = new THREE.Color();
-
-      for (let i = 0; i < spheres.count; i++) {
-        const x = Math.random() * 4 - 2;
-        const y = Math.random() * 1 + 1;
-        const z = Math.random() * 4 - 2;
-
-        matrix.setPosition(x, y, z);
-        spheres.setMatrixAt(i, matrix);
-        var ballColor = i % 3;
-        if (ballColor == 0) {
-          spheres.setColorAt(i, color.setHex(0xb0b3b2));
-        } else if (ballColor == 1) {
-          spheres.setColorAt(i, color.setHex(0x231f20));
-        } else if (ballColor == 2) {
-          spheres.setColorAt(i, color.setHex(0xeec629));
-        }
-      }
-
-      physics.addMesh(spheres, 1, 1.1);
-      socket.emit("debug", "Spheres added");
-    }
-
     //Add cubeGroup
     if (playerPhysics) {
       if (cubeGroup === undefined) {
         const geometryCube = new THREE.BoxGeometry(0.6, 1, 0.15);
         const geometryController = new THREE.BoxGeometry(0.08, 0.15, 0.08);
-        const material = new THREE.MeshLambertMaterial({
-          color: 0xffffff,
-          transparent: true,
-          opacity: 0.85,
-        });
 
-        cubeGroup = new THREE.InstancedMesh(geometryCube, material, clients);
-        cubeGroup.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // will be updated every frame
-        scene.add(cubeGroup);
-
-        myCubeGroup = new THREE.InstancedMesh(geometryCube, material, clients);
-        myCubeGroup.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // will be updated every frame
-        scene.add(myCubeGroup);
-        myCubeGroup.visible = false;
-
-        let clientControllers = clients * 2;
-        controllerGroup = new THREE.InstancedMesh(
-          geometryController,
-          material,
-          clientControllers
-        );
-        controllerGroup.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // will be updated every frame
-        scene.add(controllerGroup);
-        const matrix = new THREE.Matrix4();
-        const color = new THREE.Color();
-
-        myControllerGroup1 = new THREE.InstancedMesh(
-          geometryController,
-          material,
-          1
-        );
-        myControllerGroup1.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // will be updated every frame
-        scene.add(myControllerGroup1);
-        //myControllerGroup1.translateZ(0.05);
-        myControllerGroup1.visible = false;
-
-        myControllerGroup2 = new THREE.InstancedMesh(
-          geometryController,
-          material,
-          1
-        );
-        myControllerGroup2.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // will be updated every frame
-        scene.add(myControllerGroup2);
-        myControllerGroup2.visible = false;
-
-        for (let k = 0; k < cubeGroup.count; k++) {
+        for (let i = 0; i < clients; i++) {
+          const material = new THREE.MeshLambertMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.85,
+          });
           let colorRandom = Math.random() * 0xffffff;
-          matrix.setPosition(k, 0, -1000);
-          cubeGroup.setMatrixAt(k, matrix);
-          cubeGroup.setColorAt(k, color.set(colorRandom));
-          matrix.setPosition(k, 0, -900);
-          const l = 2 * k;
-          const m = 2 * k + 1;
-          controllerGroup.setMatrixAt(l, matrix);
-          controllerGroup.setMatrixAt(m, matrix);
-          controllerGroup.setColorAt(l, color.set(colorRandom));
-          controllerGroup.setColorAt(m, color.set(colorRandom));
-        }
+          material.color.set(colorRandom);
+          const cube = new THREE.Mesh(geometryCube, material);
+          phy.add({
+            name: "cube" + i,
+            type: "mesh",
+            mesh: cube,
+            mass: 0,
+            friction: 0,
+            restitution: 0,
+            pos: [1000, i, i],
+          });
 
-        for (let k = 0; k < myCubeGroup.count; k++) {
-          matrix.setPosition(k, 0, -1100);
-          myCubeGroup.setMatrixAt(k, matrix);
-          matrix.setPosition(k, 0, -1200);
-          myControllerGroup1.setMatrixAt(0, matrix);
-          myControllerGroup2.setMatrixAt(0, matrix);
-        }
+          let index1 = 2 * i;
+          let index2 = 2 * i + 1;
 
-        physics.addMesh(cubeGroup, 0, 0, true);
-        physics.addMesh(myCubeGroup, 0, 0, true);
-        socket.emit("debug", "cubeGroup added");
-        physics.addMesh(controllerGroup, 0, 0, true);
-        socket.emit("debug", "controllerGroup added");
+          const controller1 = new THREE.Mesh(geometryController, material);
+          phy.add({
+            name: "controller" + index1,
+            type: "mesh",
+            mesh: controller1,
+            mass: 0,
+            friction: 0,
+            restitution: 0,
+            pos: [900, 2 * i, 2 * i],
+          });
+
+          const controller2 = new THREE.Mesh(geometryController, material);
+          phy.add({
+            name: "controller" + index2,
+            type: "mesh",
+            mesh: controller2,
+            mass: 0,
+            friction: 0,
+            restitution: 0,
+            pos: [900, 2 * i + 1, 2 * i + 1],
+          });
+        }
       }
     }
   }
@@ -2102,9 +2282,255 @@ function loadButtons() {
   const consoleMaterial = new THREE.MeshPhongMaterial({ color: 0x595959 });
   consoleMesh = new THREE.Mesh(consoleGeometry, consoleMaterial);
   consoleMesh.position.set(0, 0, 0);
-  //consoleMesh.castShadow = true;
-  //consoleMesh.receiveShadow = true;
   scene.add(consoleMesh);
+  consoleMesh.visible = false;
+
+  //Menu Group
+  button1 = makeButtonMesh(0.6, 0.4, 0.1, selectedColor);
+  const button1Text = createText("Protein", 0.1);
+  button1.add(button1Text);
+  button1Text.position.set(0, 0, 0.052);
+  button1.rotation.set(0, -Math.PI / 2, 0);
+  button1.position.set(1.5, 1, 0.35);
+
+  menuGroup.add(button1);
+
+  // createXRButton(menuGroup, new THREE.Vector3(0.6, 0.4, 0.1), 'Protein', new THREE.Vector3(1.5, 1, 0.7), new THREE.Euler(0, -Math.PI/2, 0, 'XYZ'), selectedColor, function() {
+  //   button1Pressed();
+  //   socket.emit("button1ToServer", "");
+  //});
+
+  button2 = makeButtonMesh(0.6, 0.4, 0.1, selectedColor);
+  const button2Text = createText("Galton Board", 0.1);
+  button2.add(button2Text);
+  //stlButtonText.rotation.y = -Math.PI;
+  button2Text.position.set(0, 0, 0.052);
+  button2.rotation.set(0, -Math.PI / 2, 0);
+  button2.position.set(1.5, 1, 1.05);
+
+  menuGroup.add(button2);
+
+  button3 = makeButtonMesh(0.6, 0.4, 0.1, selectedColor);
+  const button3Text = createText("3D Lab", 0.1);
+  button3.add(button3Text);
+  //stlButtonText.rotation.y = -Math.PI;
+  button3Text.position.set(0, 0, 0.052);
+  button3.rotation.set(0, -Math.PI / 2, 0);
+  button3.position.set(1.5, 1, 1.75);
+
+  menuGroup.add(button3);
+
+  button4 = makeButtonMesh(0.6, 0.4, 0.1, selectedColor);
+  const button4Text = createText("Ballshooter", 0.1);
+  button4.add(button4Text);
+  //stlButtonText.rotation.y = -Math.PI;
+  button4Text.position.set(0, 0, 0.09);
+  button4.rotation.set(0, -Math.PI / 2, 0);
+  button4.position.set(1.5, 1, 2.45);
+
+  menuGroup.add(button4);
+
+  button5 = makeButtonMesh(0.6, 0.4, 0.1, selectedColor);
+  const button5Text = createText("Line Painter", 0.1);
+  button5.add(button5Text);
+  //stlButtonText.rotation.y = -Math.PI;
+  button5Text.position.set(0, 0, 0.09);
+  button5.rotation.set(0, -Math.PI / 2, 0);
+  button5.position.set(1.5, 1, 3.15);
+
+  menuGroup.add(button5);
+
+  scene.add(menuGroup);
+
+  //Exit Button Group
+
+  exitButton = makeButtonMesh(0.8, 0.4, 0.1, selectedColor);
+  const exitButtonText = createText("Return to Menu", 0.1);
+  exitButton.add(exitButtonText);
+  //stlButtonText.rotation.y = -Math.PI;
+  exitButtonText.position.set(0, 0, 0.07);
+  exitButton.rotation.set(0, -Math.PI / 2, 0);
+  exitButton.position.set(1.5, 1.4, 0);
+
+  exitGroup.add(exitButton);
+
+  scene.add(exitGroup);
+  exitGroup.visible = false;
+
+  resetButton = makeButtonMesh(0.8, 0.4, 0.1, selectedColor);
+  const resetButtonText = createText("Reset Balls", 0.1);
+  resetButton.add(resetButtonText);
+  //stlButtonText.rotation.y = -Math.PI;
+  resetButtonText.position.set(0, 0, 0.07);
+  resetButton.rotation.set(0, -Math.PI / 2, 0);
+  resetButton.position.set(1.5, 2.1, 0);
+
+  resetGroup.add(resetButton);
+
+  scene.add(resetGroup);
+  resetGroup.visible = false;
+
+  gravityButton = makeButtonMesh(0.8, 0.4, 0.1, selectedColor);
+  const gravityButtonText = createText("Toggle Gravity", 0.1);
+  gravityButton.add(gravityButtonText);
+  //stlButtonText.rotation.y = -Math.PI;
+  gravityButtonText.position.set(0, 0, 0.07);
+  gravityButton.rotation.set(0, -Math.PI / 2, 0);
+  gravityButton.position.set(1.5, 1.9, 0);
+
+  gravityGroup.add(gravityButton);
+
+  occlusionButton = makeButtonMesh(0.8, 0.4, 0.1, selectedColor);
+  const occlusionButtonText = createText("Toggle Occlusion", 0.1);
+  occlusionButton.add(occlusionButtonText);
+  //stlButtonText.rotation.y = -Math.PI;
+  occlusionButtonText.position.set(0, 0, 0.07);
+  occlusionButton.rotation.set(0, -Math.PI / 2, 0);
+  occlusionButton.position.set(1.5, 2.4, 0);
+
+  gravityGroup.add(occlusionButton);
+
+  scene.add(gravityGroup);
+  gravityGroup.visible = false;
+
+  clearPaintButton = makeButtonMesh(0.8, 0.4, 0.1, selectedColor);
+  const clearPaintButtonText = createText("Clear Paint", 0.1);
+  clearPaintButton.add(clearPaintButtonText);
+  //stlButtonText.rotation.y = -Math.PI;
+  clearPaintButtonText.position.set(0, 0, 0.07);
+  clearPaintButton.rotation.set(0, -Math.PI / 2, 0);
+  clearPaintButton.position.set(1.5, 1.9, 0);
+
+  paintGroup.add(clearPaintButton);
+
+  scene.add(paintGroup);
+  paintGroup.visible = false;
+  
+    scene.add(occlusionGroup);
+  occlusionGroup.visible = false;
+
+    scene.add(shadowGroup);
+  shadowGroup.visible = false;
+
+  ///Add button Actions
+
+  world.registerComponent(Object3D2).registerComponent(Button);
+
+  world.registerSystem(ButtonSystem, { renderer: renderer, camera: camera });
+
+  const button1Action = function () {
+    button1Pressed();
+    socket.emit("button1ToServer", "");
+  };
+
+  const button1Entity = world.createEntity();
+  button1Entity.addComponent(Object3D2, { object: button1 });
+  button1Entity.addComponent(Button, {
+    action: button1Action,
+  });
+
+  const button2Action = function () {
+    button2Pressed();
+    socket.emit("button2ToServer", "");
+  };
+
+  const button2Entity = world.createEntity();
+  button2Entity.addComponent(Object3D2, { object: button2 });
+  button2Entity.addComponent(Button, {
+    action: button2Action,
+  });
+
+  const button3Action = function () {
+    button3Pressed();
+    socket.emit("button3ToServer", "");
+  };
+
+  const button3Entity = world.createEntity();
+  button3Entity.addComponent(Object3D2, { object: button3 });
+  button3Entity.addComponent(Button, {
+    action: button3Action,
+  });
+
+  const button4Action = function () {
+    button4Pressed();
+    socket.emit("button4ToServer", "");
+  };
+
+  const button4Entity = world.createEntity();
+  button4Entity.addComponent(Object3D2, { object: button4 });
+  button4Entity.addComponent(Button, {
+    action: button4Action,
+  });
+
+  const button5Action = function () {
+    button5Pressed();
+    socket.emit("button5ToServer", "");
+  };
+
+  const button5Entity = world.createEntity();
+  button5Entity.addComponent(Object3D2, { object: button5 });
+  button5Entity.addComponent(Button, {
+    action: button5Action,
+  });
+
+  const exitButtonAction = function () {
+    exitButtonPressed();
+    socket.emit("exitButtonToServer", "");
+  };
+
+  const exitButtonEntity = world.createEntity();
+  exitButtonEntity.addComponent(Object3D2, { object: exitButton });
+  exitButtonEntity.addComponent(Button, {
+    action: exitButtonAction,
+  });
+
+  const resetButtonAction = function () {
+    resetButtonPressed();
+    socket.emit("resetButtonToServer", "");
+  };
+
+  const resetButtonEntity = world.createEntity();
+  resetButtonEntity.addComponent(Object3D2, { object: resetButton });
+  resetButtonEntity.addComponent(Button, {
+    action: resetButtonAction,
+  });
+
+  const gravityButtonAction = function () {
+    gravityButtonPressed();
+    socket.emit("gravityButtonToServer", "");
+  };
+
+  const gravityButtonEntity = world.createEntity();
+  gravityButtonEntity.addComponent(Object3D2, { object: gravityButton });
+  gravityButtonEntity.addComponent(Button, {
+    action: gravityButtonAction,
+  });
+
+  const clearPaintButtonAction = function () {
+    clearPaintButtonPressed();
+    socket.emit("clearPaintButtonToServer", "");
+  };
+
+  const clearPaintButtonEntity = world.createEntity();
+  clearPaintButtonEntity.addComponent(Object3D2, { object: clearPaintButton });
+  clearPaintButtonEntity.addComponent(Button, {
+    action: clearPaintButtonAction,
+  });
+
+  const occlusionButtonAction = function () {
+    occlusionButtonPressed();
+    socket.emit("occlusionButtonToServer", "");
+  };
+
+  const occlusionButtonEntity = world.createEntity();
+  occlusionButtonEntity.addComponent(Object3D2, { object: occlusionButton });
+  occlusionButtonEntity.addComponent(Button, {
+    action: occlusionButtonAction,
+  });
+
+  ///////////
+  // 3d LAB buttons and actions
+  ////////
 
   stlButton = makeButtonMesh(0.08, 0.12, 0.2, selectedColor);
   const stlButtonText = createText("STL", 0.04);
@@ -2227,6 +2653,7 @@ function loadButtons() {
   buttonGroup.add(gcodeLayerToggle);
   buttonGroup.add(gcodeLayerMinus);
   scene.add(buttonGroup);
+  buttonGroup.visible = false;
 
   printerButtonGroup.add(coverButton);
   printerButtonGroup.add(fansButton);
@@ -2608,7 +3035,8 @@ function loadButtons() {
 
 function loadScene() {
   //Load scene
-  const loader = new THREE.ObjectLoader(loadingManager);
+
+  const loader = new THREE.ObjectLoader();
   loader.load(
     // resource URL
     //"home.json",
@@ -2661,7 +3089,14 @@ function loadScene() {
           }
         }
       }
+
+      //    baseReferenceSpace = renderer.xr.getReferenceSpace();
+      //scene.background = null;
+      //planes = new XRPlanes(renderer);
+      // planeGroup.add(planes);
       //  scene.add(obj);
+      furnitureGroup.visible = false;
+      lineGroup.visible = false;
     },
 
     // onProgress callback
@@ -2679,6 +3114,118 @@ function loadScene() {
   );
 
   const STLloader = new STLLoader(loadingManager);
+  STLloader.load(
+    //"https://cdn.glitch.global/5f925a94-41ce-401a-9a3a-12fb19a7ca42/3DBenchy.stl?v=1691594384628",
+    "https://cdn.glitch.global/004a9581-855e-468e-a7ff-af67b084fe16/SITE%202024%20Logo.stl?v=1710870002120",
+    function (geometry) {
+      const material = new THREE.MeshPhongMaterial({
+        color: 0x099966,
+        specular: 0x494949,
+        shininess: 200,
+        transparent: true,
+        opacity: 1,
+        //side: THREE.DoubleSide,
+      });
+      siteLogo = new THREE.Mesh(geometry, material);
+      siteLogo.position.x = 1.75;
+      siteLogo.position.y = 1.5;
+      siteLogo.position.z = 1.75;
+      siteLogo.rotation.set(0, -Math.PI / 2, 0);
+      siteLogo.scale.set(0.02, 0.02, 0.02);
+      scene.add(siteLogo);
+    },
+    function (xhr) {
+      if (loadingDebug) {
+        console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
+      }
+    },
+
+    // onError callback
+    function (err) {
+      console.error("An error happened");
+    }
+  );
+
+  const gltfloader = new GLTFLoader();
+  gltfloader.load(
+    "https://cdn.glitch.global/af53d743-7434-438c-b1cc-1197d824534b/Prot.gltf?v=1725459391773",
+    //"https://cdn.glitch.me/4dee99f4-3b27-47bf-ab5c-24e04d8e18f5/4IHF-ribbon-secondary-vis_NIH3D.glb?v=1709753333428",
+    //"https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/realistic_human_heart.glb?v=1711911660645",
+    //"https://cdn.glitch.me/b3d90d45-9439-4d12-b6ad-1472ccec8903/pig_skull.glb?v=1711912161454",
+    //"https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/6604d154d32ccf39d49d6f2d.glb?v=1712082602019",
+    //"https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/rpm-avatar-vr-1.glb?v=1712083574534",
+    async function (gltf) {
+      proteinModel = gltf.scene;
+
+      // wait until the model can be added to the scene without blocking due to shader compilation
+
+      await renderer.compileAsync(proteinModel, camera, scene);
+      proteinModel.scale.set(0.02, 0.02, 0.02);
+      //proteinModel.position.y = -0.5;
+      //model.position.y = 1.5;
+
+      const boundingBox = new THREE.Box3();
+      boundingBox.setFromObject(proteinModel);
+
+      var size = new THREE.Vector3();
+      boundingBox.getSize(size);
+
+      var boxGeometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+      var boxMaterial = new THREE.MeshLambertMaterial({
+        color: 0x00ff00,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+      });
+      boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
+
+      var boundingBoxCenter = new THREE.Vector3();
+      boundingBox.getCenter(boundingBoxCenter);
+      boxMesh.position.copy(boundingBoxCenter);
+      boxMesh.add(proteinModel);
+      boxMesh.name = "protein";
+
+      proteinGroup.add(boxMesh);
+      proteinModel.rotation.set(0, -Math.PI / 2, 0);
+
+      centerOfRotation.add(proteinGroup);
+      proteinGroup.visible = false;
+    }
+  );
+  if (newAvatar) {
+    const gltfloader2 = new GLTFLoader();
+    gltfloader2.load(
+      //"https://cdn.glitch.me/4dee99f4-3b27-47bf-ab5c-24e04d8e18f5/4IHF-ribbon-secondary-vis_NIH3D.glb?v=1709753333428",
+      //"https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/realistic_human_heart.glb?v=1711911660645",
+      //"https://cdn.glitch.me/b3d90d45-9439-4d12-b6ad-1472ccec8903/pig_skull.glb?v=1711912161454",
+      //"https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/6604d154d32ccf39d49d6f2d.glb?v=1712082602019",
+      "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/rpm-avatar-vr-1.glb?v=1712083574534",
+      //https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/rotate3.glb?v=1712250929507",
+      async function (gltf) {
+        let model = gltf.scene;
+        // wait until the model can be added to the scene without blocking due to shader compilation
+
+        await renderer.compileAsync(model, camera, scene);
+        rightHand = model.getObjectByName("RightHand");
+        leftHand = model.getObjectByName("LeftHand");
+        head = model.getObjectByName("Neck");
+        //model.quaternion.invert();
+        console.log(model);
+        // model.position.set(0,0,0);
+        avatarModel.add(model);
+        //model.children[0].rotation.y = Math.PI;
+        //model.up.y = -1;
+        //avatarModel.rotation.y = Math.PI;
+        //model.rotation.y = Math.PI;
+        scene.add(avatarModel);
+      }
+    );
+  }
+
+  ///////
+  //3d Lab
+  ////////
+
   STLloader.load(
     //"https://cdn.glitch.global/5f925a94-41ce-401a-9a3a-12fb19a7ca42/3DBenchy.stl?v=1691594384628",
     "https://cdn.glitch.global/5f925a94-41ce-401a-9a3a-12fb19a7ca42/simplify_3DBenchy.stl?v=1691980248117",
@@ -2717,6 +3264,7 @@ function loadScene() {
         color: 0x00ff00,
         transparent: true,
         opacity: 0.85,
+        side: THREE.DoubleSide,
       });
 
       var cube2 = new THREE.Mesh(geometry2, material2);
@@ -2738,6 +3286,7 @@ function loadScene() {
       } else {
         boatMeshes.visible = false;
       }
+      boatMeshes.visible = false;
       boundingBoxesBoat.visible = false;
       boundingBoxesOriginalScale = boundingBoxesBoat.scale;
     },
@@ -2821,6 +3370,7 @@ function loadScene() {
         color: 0x00ff00,
         transparent: true,
         opacity: 0.85,
+        side: THREE.DoubleSide,
       });
 
       var cube2 = new THREE.Mesh(geometry2, material2);
@@ -2921,6 +3471,7 @@ function loadScene() {
         color: 0x00ff00,
         transparent: true,
         opacity: 0.85,
+        side: THREE.DoubleSide,
       });
 
       var cube2 = new THREE.Mesh(geometry2, material2);
@@ -2963,7 +3514,7 @@ function loadScene() {
 
   const GcodeLoader = new GCodeLoader(loadingManager);
   GcodeLoader.load(
-    "benchy.gcode",
+    "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/benchy.gcode?v=1711830217510",
     function (object) {
       object.position.set(2.995, 0.0, 2.97);
       object.scale.set(0.03, 0.03, 0.03);
@@ -2998,7 +3549,7 @@ function loadScene() {
 
   const loaderGcodeLayerBoat = new GCodeLoaderLayerBoat(loadingManager);
   loaderGcodeLayerBoat.load(
-    "benchy.gcode",
+    "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/benchy.gcode?v=1711830217510",
     function (object) {
       object.position.set(2.995, 0.0, 2.97);
       object.scale.set(0.03, 0.03, 0.03);
@@ -3021,7 +3572,7 @@ function loadScene() {
   );
   const loaderGcode = new GCodeLoaderNoLayer(loadingManager);
   loaderGcode.load(
-    "3d_printer_test_support.gcode",
+    "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/3d_printer_test_support.gcode?v=1711830470059",
     function (object) {
       object.position.set(0.85, 0.0, 1.3);
       object.scale.set(0.03, 0.03, 0.03);
@@ -3055,7 +3606,7 @@ function loadScene() {
   );
 
   loaderGcode.load(
-    "3d_printer_test_tree.gcode",
+    "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/3d_printer_test_tree.gcode?v=1711830556575",
     function (object) {
       object.position.set(0.85, 0.0, 1.3);
       object.scale.set(0.03, 0.03, 0.03);
@@ -3088,7 +3639,7 @@ function loadScene() {
 
   const loaderGcodeLayer = new GCodeLoaderLayer(loadingManager);
   loaderGcodeLayer.load(
-    "3d_printer_test_tree.gcode",
+    "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/3d_printer_test_tree.gcode?v=1711830556575",
     function (object) {
       object.position.set(0.85, 0.0, 1.3);
       object.scale.set(0.03, 0.03, 0.03);
@@ -3111,7 +3662,7 @@ function loadScene() {
   );
 
   loaderGcode.load(
-    "giantowl_support.gcode",
+    "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/giantowl_support.gcode?v=1711830912377",
     function (object) {
       object.position.set(2.82, -0.03, 2.79);
       object.scale.set(0.03, 0.03, 0.03);
@@ -3145,7 +3696,7 @@ function loadScene() {
   );
 
   loaderGcode.load(
-    "giantowl_tree.gcode",
+    "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/giantowl_tree.gcode?v=1711830793758",
     function (object) {
       object.position.set(2.82, -0.03, 2.79);
       object.scale.set(0.03, 0.03, 0.03);
@@ -3178,7 +3729,7 @@ function loadScene() {
 
   //const loaderGcodeLayer = new GCodeLoaderLayer();
   loaderGcodeLayer.load(
-    "giantowl_support.gcode",
+    "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/giantowl_support.gcode?v=1711830912377",
     function (object) {
       object.position.set(2.82, -0.03, 2.79);
       object.scale.set(0.03, 0.03, 0.03);
@@ -3202,9 +3753,13 @@ function loadScene() {
 
   const loaderGcodePrinter = new GCodeLoaderPrinter(loadingManager);
   loaderGcodePrinter.load(
-    "giantowl_tree.gcode",
+    "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/benchy.gcode?v=1711830217510",
     function (object) {
-      printerPathBoat = object;
+      let test = [];
+      for (let i = 0; i < object.length; i++) {
+        test.push(object[i]);
+      }
+      printerPathArray.push(test);
     },
     function (xhr) {
       if (loadingDebug) {
@@ -3220,9 +3775,13 @@ function loadScene() {
 
   const loaderGcodePrinter2 = new GCodeLoaderPrinter(loadingManager);
   loaderGcodePrinter2.load(
-    "giantowl_tree.gcode",
+    "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/3d_printer_test_tree.gcode?v=1711830556575",
     function (object2) {
-      printerPathTest = object2;
+      let test = [];
+      for (let i = 0; i < object2.length; i++) {
+        test.push(object2[i]);
+      }
+      printerPathArray.push(test);
     },
     function (xhr) {
       if (loadingDebug) {
@@ -3238,9 +3797,16 @@ function loadScene() {
 
   const loaderGcodePrinter3 = new GCodeLoaderPrinter(loadingManager);
   loaderGcodePrinter3.load(
-    "giantowl_tree.gcode",
+    "https://cdn.glitch.global/b3d90d45-9439-4d12-b6ad-1472ccec8903/giantowl_tree.gcode?v=1711830793758",
     function (object3) {
-      printerPathOwl = object3;
+      let test = [];
+      for (let i = 0; i < object3.length; i++) {
+        test.push(object3[i]);
+      }
+      printerPathArray.push(test);
+      console.log(printerPathArray[0]);
+      console.log(printerPathArray[1]);
+      console.log(printerPathArray[2]);
     },
     function (xhr) {
       if (loadingDebug) {
@@ -3841,27 +4407,320 @@ function loadScene() {
     lineFilamentState = true;
     updateFilament();
   }
-
-  /*
-  const GLTFloader = new GLTFLoader().setPath("");
-  GLTFloader.load(
-    "https://cdn.glitch.global/c083fb64-c240-45d7-9e89-2db9dd9aafd8/custom_avatar.glb?v=1691542920375",
-    function (gltf) {
-      gltf.scene.position.set(1, 0.5, 0);
-      gltf.scene.rotation.set(0, -Math.PI/2, 0);
-      scene.add(gltf.scene);
-      console.log(gltf.scene);
-      
-
-      //render();
-    }
-  );
-  */
 }
 
 /////////////////
 // Functions  //
 ///////////////
+
+function button1Pressed() {
+  proteinGroup.visible = true;
+  menuGroup.visible = false;
+  exitGroup.visible = true;
+  siteLogo.visible = false;
+  //galton.visible = false;
+  furnitureGroup.visible = false;
+  lineGroup.visible = false;
+  previousActiveMesh = activeMesh;
+  activeMesh = "protein";
+  // boatMeshes.visible = true;
+  centerOfRotation.position.y = 1.25;
+}
+
+function button2Pressed() {
+  proteinGroup.visible = false;
+  menuGroup.visible = false;
+  exitGroup.visible = true;
+  siteLogo.visible = false;
+  furnitureGroup.visible = false;
+  lineGroup.visible = false;
+  resetGroup.visible = true;
+
+  const STLloader = new STLLoader(loadingManager);
+  STLloader.load(
+    //"https://cdn.glitch.global/5f925a94-41ce-401a-9a3a-12fb19a7ca42/3DBenchy.stl?v=1691594384628",
+    "https://cdn.glitch.global/004a9581-855e-468e-a7ff-af67b084fe16/Hexagon%20Scaled.stl?v=1710966108670",
+    function (geometry) {
+      const material = new THREE.MeshPhongMaterial({
+        color: 0x099966,
+        specular: 0x494949,
+        shininess: 200,
+        transparent: true,
+        opacity: 1,
+        //side: THREE.DoubleSide,
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.wireframe = true;
+
+      //Indices needed to Rapier, not needed for Physx
+      const indices = [];
+      for (let i = 0; i < geometry.attributes.position.count; i++) {
+        indices.push(i);
+      }
+
+      mesh.geometry.setIndex(indices);
+
+      phy.add({
+        name: "galton",
+        type: "mesh",
+        mesh: mesh,
+        pos: [1.75, 1.5, 1.75],
+        rot: [0, -90, 180],
+        debug: true,
+        friction: 0,
+        restitution: 0,
+      });
+      phy.add({
+        name: "galtonGlass",
+        type: "box",
+        size: [0.1, 3, 3],
+        pos: [1.58, 1.5, 1.75],
+        //rot: [0, -90, 180],
+        debug: true,
+        visible: false,
+      });
+      //galton.position.x = 1.75;
+      //galton.position.y = 1.75;
+      //galton.position.z = 1.75;
+      //galton.rotation.set(0, -Math.PI/2, Math.PI);
+      //galton.scale.set(0.015, 0.015, 0.015);
+      //scene.add(galton);
+      //galton.visible = true;
+    },
+    function (xhr) {
+      if (loadingDebug) {
+        console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
+      }
+    },
+
+    // onError callback
+    function (err) {
+      console.error("An error happened");
+    }
+  );
+  galtonBalls = true;
+}
+
+function button3Pressed() {
+  proteinGroup.visible = false;
+  menuGroup.visible = false;
+  exitGroup.visible = true;
+  buttonGroup.visible = true;
+  consoleMesh.visible = true;
+  siteLogo.visible = false;
+  //galton.visible = false;
+  furnitureGroup.visible = true;
+  lineGroup.visible = true;
+  activeMesh = "boat";
+  labReset();
+  
+    const loader = new THREE.ObjectLoader();
+  loader.load(
+    // resource URL
+    //"home.json",
+    "3dPrinterLab_no_ceiling.json",
+    //"labmesh.json",
+    function (obj) {
+      for (let i = 0; i < obj.children.length; i++) {
+        if (obj.children[i] instanceof THREE.Mesh) {
+          //console.log(obj.children[i]);
+          if (obj.children[i].geometry.type == "BoxGeometry") {
+            if (obj.children[i].geometry.parameters.height == 0) {
+              //console.log(obj.children[i]);
+              let data = {
+                width: obj.children[i].geometry.parameters.width,
+                length: obj.children[i].geometry.parameters.height,
+                height: obj.children[i].geometry.parameters.depth,
+                color: obj.children[i].material.color,
+                transparent: obj.children[i].material.transparent,
+                opacity: obj.children[i].material.opacity,
+                matrix: obj.children[i].matrix,
+                name: obj.children[i].name,
+              };
+              addPlaneFromServer(data);
+            } else {
+              //This first else statement sends furniture as "BoxGeometry"
+              let data = {
+                geometry: obj.children[i].geometry,
+                width: obj.children[i].geometry.parameters.width,
+                length: obj.children[i].geometry.parameters.height,
+                height: obj.children[i].geometry.parameters.depth,
+                color: obj.children[i].material.color,
+                transparent: obj.children[i].material.transparent,
+                opacity: obj.children[i].material.opacity,
+                matrix: obj.children[i].matrix,
+                name: obj.children[i].name,
+              };
+              addPhysicsDetectionJSON(data);
+            }
+          } else {
+            //this second statement sends the "BufferGeometry" for the depth wireframe
+            let data = {
+              geometry: obj.children[i].geometry,
+              color: obj.children[i].material.color,
+              transparent: obj.children[i].material.transparent,
+              opacity: obj.children[i].material.opacity,
+              matrix: obj.children[i].matrix,
+              name: obj.children[i].name,
+            };
+            addPhysicsDetectionJSON(data);
+          }
+        }
+      }
+    },
+
+    // onProgress callback
+
+    function (xhr) {
+      if (loadingDebug) {
+        console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
+      }
+    },
+
+    // onError callback
+    function (err) {
+      console.error("An error happened");
+    }
+  );
+  
+}
+
+function button4Pressed() {
+  proteinGroup.visible = false;
+  menuGroup.visible = false;
+  exitGroup.visible = true;
+  siteLogo.visible = false;
+  furnitureGroup.visible = false;
+  lineGroup.visible = false;
+  resetGroup.visible = false;
+  occlusionGroup.visible = true;
+  shadowGroup.visible = true;
+  gravityGroup.visible = true;
+  button4Active = true;
+}
+
+function button5Pressed() {
+  proteinGroup.visible = false;
+  menuGroup.visible = false;
+  exitGroup.visible = true;
+  paintGroup.visible = true;
+  siteLogo.visible = false;
+  furnitureGroup.visible = false;
+  lineGroup.visible = false;
+  resetGroup.visible = false;
+  gravityGroup.visible = false;
+  button5Active = true;
+  painter1.mesh.visible = true;
+  painter2.mesh.visible = true;
+  let pivot1 = controller1.getObjectByName("pivot");
+  let pivot2 = controller2.getObjectByName("pivot");
+  pivot1.visible = true;
+  pivot2.visible = true;
+}
+
+function exitButtonPressed() {
+  proteinGroup.visible = false;
+  menuGroup.visible = true;
+  exitGroup.visible = false;
+  paintGroup.visible = false;
+  occlusionGroup.visible = false;
+  shadowGroup.visible = false;
+  siteLogo.visible = true;
+  //galton.visible = false;
+  resetGroup.visible = false;
+  furnitureGroup.visible = false;
+  lineGroup.visible = false;
+  labOff();
+  button4Active = false;
+  button5Active = false;
+  gravityGroup.visible = false;
+  phy.setGravity([0, -9.81, 0]);
+  gravity = true;
+  enableBalls = false;
+  activeMesh = previousActiveMesh;
+  painter1.mesh.visible = false;
+  painter2.mesh.visible = false;
+  let pivot1 = controller1.getObjectByName("pivot");
+  let pivot2 = controller2.getObjectByName("pivot");
+  pivot1.visible = false;
+  pivot2.visible = false;
+  painter1.clear();
+  painter2.clear();
+
+  centerOfRotation.position.set(1.535, 0.91, 1.864);
+  centerOfRotation.rotation.set(0, Math.PI, 0);
+  centerOfRotation.scale.set(1, 1, 1);
+  /*
+  if (occlusionMesh !== undefined) {
+    occlusionMesh.geometry.dispose();
+    occlusionMesh.material.dispose();
+    scene.remove(occlusionMesh);
+    shadowMesh.geometry.dispose();
+    shadowMesh.material.dispose();
+    scene.remove(shadowMesh);
+  }
+  */
+
+  for (let i = 0; i < wireframemeshNumber; i++) {
+    phy.remove("wireframeMesh" + i); 
+  }
+  wireframemeshNumber = 0;
+  phy.remove("galton");
+  phy.remove("galtonGlass");
+  for (let i = 0; i < 500; i++) {
+    phy.remove("sphere" + i);
+  }
+  galtonBalls = false;
+  for (let i = 0; i < meshNumber; i++) {
+    phy.remove("mesh" + i);
+  }
+  meshNumber = 0;
+  for (let i = 0; i < planeNumber; i++) {
+    phy.remove("plane" + i);
+  }
+  planeNumber = 0;
+  count = 0;
+}
+function resetButtonPressed() {
+  for (let i = 0; i < ballsGalton; i++) {
+    phy.remove("sphere" + i);
+  }
+  count = 0;
+}
+
+function gravityButtonPressed() {
+  if (gravity) {
+    phy.setGravity([0, 0, 0]);
+    gravity = false;
+  } else {
+    phy.setGravity([0, -9.81, 0]);
+    gravity = true;
+  }
+}
+
+function occlusionButtonPressed() {
+  if (occlusionGroup !== undefined) {
+    if (occlusion) {
+      occlusionGroup.visible = false;
+      shadowGroup.visible = false;
+
+      occlusion = false;
+    } else {
+      occlusionGroup.visible = true;
+      shadowGroup.visible = true;
+      occlusion = true;
+    }
+  }
+}
+
+function clearPaintButtonPressed() {
+  painter1.clear();
+  painter2.clear();
+}
 
 function addLocalClientToVR() {
   userArray[0].color = randomColor(); //calls randomColor() function
@@ -3903,14 +4762,13 @@ function addCube(data) {
   if (inArray < 0) {
     userArray.push(data);
   }
-  if (!newAvatars) {
-    const geometry = new THREE.BoxGeometry(0.6, 1, 0.15);
-    const material = new THREE.MeshLambertMaterial({
-      color: data.color,
-      transparent: true,
-      opacity: 0.85,
-    });
-  }
+
+  const geometry = new THREE.BoxGeometry(0.6, 1, 0.15);
+  const material = new THREE.MeshLambertMaterial({
+    color: data.color,
+    transparent: true,
+    opacity: 0.85,
+  });
   if (!playerPhysics) {
     const geometry = new THREE.BoxGeometry(0.6, 1, 0.15);
     const material = new THREE.MeshLambertMaterial({
@@ -3925,34 +4783,6 @@ function addCube(data) {
     socket.emit("debug", "My name is " + cube.name);
     cube.position.set(0, 0, 0);
     scene.add(cube);
-  }
-
-  if (newAvatars) {
-    const GLTFloader = new GLTFLoader().setPath("");
-    GLTFloader.load(
-      "https://cdn.glitch.global/c083fb64-c240-45d7-9e89-2db9dd9aafd8/custom_avatar.glb?v=1691542920375",
-      function (gltf) {
-        //gltf.scene.position.set(1, 0.5, 0);
-        var name = data.id;
-        gltf.scene.name = name;
-        //gltf.scene.rotation.set(0, Math.PI/2, 0);
-        scene.add(gltf.scene);
-
-        console.log(scene);
-
-        //render();
-      },
-      function (xhr) {
-        if (loadingDebug) {
-          console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
-        }
-      },
-
-      // onError callback
-      function (err) {
-        console.error("An error happened");
-      }
-    );
   }
 
   var i = getIndexByID(data);
@@ -4063,54 +4893,95 @@ function handleController(controller) {
       if (renderer.xr.isPresenting && pressCount >= 1) {
         pressCount = 0;
         var controllerOffset = controller.position;
+        var XRCamera = renderer.xr.getCamera();
+        var cameraOffset = XRCamera.position;
 
-        //Temporary work around for iOS
-        if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-          controllerOffset.y = controllerOffset.y;
-        }
-        physics.setMeshPosition(spheres, controllerOffset, count);
         velocity.x = (Math.random() - 0.5) * 2;
         velocity.y = (Math.random() - 0.5) * 2;
         velocity.z = Math.random() - 9;
-        velocity.applyQuaternion(controller.quaternion);
+        // Convert Euler rotation to Quaternion
+        let quaternion = new THREE.Quaternion();
+        if (!userArray[0].vr) {
+          quaternion.setFromEuler(XRCamera.rotation);
+        } else {
+          quaternion.setFromEuler(controller.rotation);
+        }
 
-        physics.setMeshVelocity(spheres, velocity, count);
+        // Create a vector representing the front direction
+        let frontVector = new THREE.Vector3(0, 0, -1);
 
-        socket.emit("ballShot", {
-          pos: controller.position,
-          count: count,
-          vel: velocity,
-        });
+        // Apply the rotation to the front vector
+        frontVector.applyQuaternion(quaternion);
+
+        // Scale the front vector to your desired distance (0.2 units)
+        let distance = 0.2;
+        frontVector.multiplyScalar(distance);
+
+        // Calculate the position
+        let position = new THREE.Vector3();
+        if (!userArray[0].vr) {
+          position.copy(XRCamera.position);
+        } else {
+          position.copy(controller.position);
+        }
+        position.add(frontVector);
+
+        if (!userArray[0].vr) {
+          velocity.applyQuaternion(XRCamera.quaternion);
+          phy.change({
+            name: "sphere" + count,
+            pos: [position.x, position.y, position.z],
+            linearVelocity: [velocity.x, velocity.y, velocity.z],
+          });
+          position.y = position.y - 0.2;
+          socket.emit("ballShot", {
+            pos: position,
+            count: count,
+            vel: velocity,
+          });
+        } else {
+          velocity.applyQuaternion(controller.quaternion);
+          phy.change({
+            name: "sphere" + count,
+            pos: [position.x, position.y, position.z],
+            linearVelocity: [velocity.x, velocity.y, velocity.z],
+          });
+          socket.emit("ballShot", {
+            pos: position,
+            count: count,
+            vel: velocity,
+          });
+        }
+        console.log("Ball shot");
+        //physics.setMeshVelocity(spheres, velocity, count);
       } else if (pressCount >= 1) {
         pressCount = 0;
 
         var controllerOffset = controller.position;
         // controllerOffset.y = controllerOffset.y - 0.5;
-        physics.setMeshPosition(spheres, controllerOffset, count);
+        //physics.setMeshPosition(spheres, controllerOffset, count);
         velocity.x = (Math.random() - 0.5) * 2;
         velocity.y = (Math.random() - 0.5) * 2;
         velocity.z = Math.random() - 9;
         velocity.applyQuaternion(controller.quaternion);
 
-        physics.setMeshVelocity(spheres, velocity, count);
+        //physics.setMeshVelocity(spheres, velocity, count);
+        phy.change({
+          name: "sphere" + count,
+          pos: [position.x, position.y, position.z],
+          linearVelocity: [velocity.x, velocity.y, velocity.z],
+        });
 
         socket.emit("ballShot", {
-          pos: controller.position,
+          pos: position,
           count: count,
           vel: velocity,
         });
       }
-      if (++count === spheres.count) {
+      if (++count === ballsLab) {
         count = 0;
       }
     }
-  }
-  if (controller1.userData.isSqueezing) {
-    //scene.rotation.y += 0.0005;
-  }
-
-  if (controller2.userData.isSqueezing) {
-    //scene.rotation.y += 0.0005;
   }
 }
 
@@ -4153,6 +5024,7 @@ function checkForXR() {
               optionalFeatures: [
                 "mesh-detection",
                 "plane-detection",
+                "hand-tracking",
                 //, "depth-sensing"
               ],
             })
@@ -4244,7 +5116,28 @@ function addPlaneFromServer(data) {
   meshPhysics.quaternion.setFromRotationMatrix(data.matrix);
   //scene.add(meshPhysics);
   if (enablePhysics) {
-    physics.addMesh(meshPhysics);
+    phy.add({
+      name: "plane" + planeNumber,
+      type: "mesh",
+      mesh: meshPhysics,
+      pos: [
+        meshPhysics.position.x,
+        meshPhysics.position.y,
+        meshPhysics.position.z,
+      ],
+      rot: [
+        (meshPhysics.rotation.x * 180) / Math.PI,
+        (meshPhysics.rotation.y * 180) / Math.PI,
+        (meshPhysics.rotation.z * 180) / Math.PI,
+      ],
+      mass: 0,
+      restitution: 0.2,
+      friction: 0,
+      debug: true,
+      visible: false,
+    });
+    planeNumber = planeNumber + 1;
+    //physics.addMesh(meshPhysics);
   }
 }
 
@@ -4253,7 +5146,7 @@ function addPlaneFromServer(data) {
 ///////////////////
 
 function addMeshDetectionJSON(data) {
-  console.log(data);
+  //console.log(data);
 
   //const geometry = new THREE.BoxGeometry(data.width, data.length, data.height);
   if (data.geometry.type == "BoxGeometry") {
@@ -4263,8 +5156,6 @@ function addMeshDetectionJSON(data) {
 
     const material = new THREE.MeshLambertMaterial({
       color: data.color,
-      //transparent: data.transparent,
-      //opacity: data.opacity,
       transparent: true,
       opacity: 0.5,
     });
@@ -4383,7 +5274,23 @@ function addMeshDetectionJSON(data) {
     meshPhysics.position.setFromMatrixPosition(data.matrix);
     meshPhysics.quaternion.setFromRotationMatrix(data.matrix);
     if (enablePhysics) {
-      physics.addMesh(meshPhysics);
+      phy.add({
+        name: "mesh" + meshNumber,
+        type: "mesh",
+        mesh: mesh,
+        pos: [mesh.position.x, mesh.position.y, mesh.position.z],
+        rot: [
+          (mesh.rotation.x * 180) / Math.PI,
+          (mesh.rotation.y * 180) / Math.PI,
+          (mesh.rotation.z * 180) / Math.PI,
+        ],
+        mass: 0,
+        restitution: 0.2,
+        friction: 0,
+        debug: true,
+        visible: false,
+      });
+      meshNumber = meshNumber + 1;
     }
   }
   if (data.geometry.type == "BufferGeometry") {
@@ -4405,7 +5312,157 @@ function addMeshDetectionJSON(data) {
     wiremesh.quaternion.setFromRotationMatrix(data.matrix);
     scene.add(mesh);
     furnitureGroup.add(wiremesh);
-    physics.addMesh(mesh);
+    //physics.addMesh(mesh);
+  }
+}
+
+function addPhysicsDetectionJSON(data) {
+  console.log(data);
+
+  //const geometry = new THREE.BoxGeometry(data.width, data.length, data.height);
+  if (data.geometry.type == "BoxGeometry") {
+    const x = data.width / 2;
+    const y = data.length / 2;
+    const z = data.height / 2;
+
+    const material = new THREE.MeshLambertMaterial({
+      color: data.color,
+      transparent: true,
+      opacity: 0.5,
+    });
+
+    // create a buffer geometry
+    const geometry = new THREE.BufferGeometry();
+
+    // define vertices
+    const vertices = new Float32Array([
+      // front face
+      -x,
+      -y,
+      z,
+      x,
+      -y,
+      z,
+      x,
+      y,
+      z,
+      -x,
+      y,
+      z,
+      // back face
+      -x,
+      -y,
+      -z,
+      -x,
+      y,
+      -z,
+      x,
+      y,
+      -z,
+      x,
+      -y,
+      -z,
+    ]);
+
+    // define indices
+    const indices = new Uint16Array([
+      0,
+      1,
+      2,
+      0,
+      2,
+      3, // front face
+      4,
+      5,
+      6,
+      4,
+      6,
+      7, // back face
+      3,
+      2,
+      6,
+      3,
+      6,
+      5, // top face
+      0,
+      4,
+      7,
+      0,
+      7,
+      1, // bottom face
+      1,
+      7,
+      6,
+      1,
+      6,
+      2, // right face
+      0,
+      3,
+      5,
+      0,
+      5,
+      4, // left face
+    ]);
+
+    // define normals
+    const normals = new Float32Array([
+      // front face
+      0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
+      // back face
+      0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
+    ]);
+
+    // add attributes to geometry
+    geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3)); //24
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+    //geometry.setDrawRange(0, 0);
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.setFromMatrixPosition(data.matrix);
+    mesh.quaternion.setFromRotationMatrix(data.matrix);
+    mesh.name = "furniture";
+    //furnitureGroup.add(mesh);
+
+    const edges = new THREE.EdgesGeometry(geometry);
+    const line = new THREE.LineSegments(
+      edges,
+      new THREE.LineBasicMaterial({ color: 0xffffff })
+    );
+    line.position.setFromMatrixPosition(data.matrix);
+    line.quaternion.setFromRotationMatrix(data.matrix);
+    //lineGroup.add(line);
+
+    var centerMesh = getCenterPoint(mesh);
+
+    const geometryPhysics = new THREE.BoxGeometry(
+      data.width,
+      data.length,
+      data.height
+    );
+
+    const meshPhysics = new THREE.Mesh(geometryPhysics, material);
+    meshPhysics.position.setFromMatrixPosition(data.matrix);
+    meshPhysics.quaternion.setFromRotationMatrix(data.matrix);
+    if (enablePhysics) {
+      phy.add({
+        name: "mesh" + meshNumber,
+        type: "mesh",
+        mesh: mesh,
+        pos: [mesh.position.x, mesh.position.y, mesh.position.z],
+        rot: [
+          (mesh.rotation.x * 180) / Math.PI,
+          (mesh.rotation.y * 180) / Math.PI,
+          (mesh.rotation.z * 180) / Math.PI,
+        ],
+        mass: 0,
+        restitution: 0.2,
+        friction: 0,
+        debug: true,
+        visible: false,
+      });
+      meshNumber = meshNumber + 1;
+    }
   }
 }
 
@@ -4413,6 +5470,7 @@ function createGeometry(vertices, indices) {
   const geometry = new THREE.BufferGeometry();
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
+  geometry.computeVertexNormals();
   return geometry;
 }
 
@@ -5078,254 +6136,6 @@ function gcodeTreeButtonPressed() {
 function hideRoomButtonPressed() {
   lineGroup.visible = !lineGroup.visible;
   furnitureGroup.visible = !furnitureGroup.visible;
-
-  //Occulde Ball
-  /*
-  for (let i = 0; i < furnitureGroup.children.length; i++){
-   furnitureGroup.children[i].material.side = THREE.BackSide;
-        furnitureGroup.children[i].material.opacity = 1;
-       furnitureGroup.children[i].material.transparent = false;
-    furnitureGroup.children[i].material.colorWrite = false;
-     furnitureGroup.children[i].renderOrder = 0;
-    
-    
-  }
-  */
-  /*
-  if (roomToggle === false) {
-    scene.background = new THREE.Color(0x505050);
-    roomToggle = true;
-    scene.children.forEach((child) => {
-      if (child.name === "plane" || child.name === "furniture") {
-        if (
-          child.material.color !== 0x00000 &&
-          child.material.opacity !== 0.85
-        ) {
-          child.material.oldColor = child.material.color;
-          child.material.oldOpacity = child.material.opacity;
-          child.material.color = new THREE.Color(0x000000);
-          child.material.opacity = 0.85;
-        }
-      }
-    });
-    furnitureGroup.children.forEach((child) => {
-      if (child.name === "plane" || child.name === "furniture") {
-        if (
-          child.material.color !== 0x00000 &&
-          child.material.opacity !== 0.85
-        ) {
-          child.material.oldColor = child.material.color;
-          child.material.oldOpacity = child.material.opacity;
-          child.material.color = new THREE.Color(0x000000);
-          child.material.opacity = 0.85;
-        }
-      }
-    });
-    desk.material.color = new THREE.Color(0x000000);
-  } else if (roomToggle === true) {
-    if (renderer.xr.isPresenting) {
-      scene.background = null;
-    } else {
-      scene.background = new THREE.Color(0x505050);
-    }
-    roomToggle = false;
-    scene.children.forEach((child) => {
-      if (child.name === "plane" || child.name === "furniture") {
-        if (child.material.oldColor !== undefined) {
-          child.material.color = child.material.oldColor;
-          child.material.opacity = child.material.oldOpacity;
-        }
-      }
-    });
-    furnitureGroup.children.forEach((child) => {
-      if (child.name === "plane" || child.name === "furniture") {
-        if (child.material.oldColor !== undefined) {
-          child.material.color = child.material.oldColor;
-          child.material.opacity = child.material.oldOpacity;
-        }
-      }
-    });
-    desk.material.color = new THREE.Color(4013373);
-  }
-  */
-}
-
-/////////////////////////
-//   Rapier Physics   //
-///////////////////////
-
-function getCollider(geometry) {
-  const parameters = geometry.parameters;
-
-  // TODO change type to is*
-
-  if (geometry.type === "BoxGeometry") {
-    const sx = parameters.width !== undefined ? parameters.width / 2 : 0.5;
-    const sy = parameters.height !== undefined ? parameters.height / 2 : 0.5;
-    const sz = parameters.depth !== undefined ? parameters.depth / 2 : 0.5;
-
-    return RAPIER.ColliderDesc.cuboid(sx, sy, sz);
-  } else if (
-    geometry.type === "SphereGeometry" ||
-    geometry.type === "IcosahedronGeometry"
-  ) {
-    const radius = parameters.radius !== undefined ? parameters.radius : 1;
-    return RAPIER.ColliderDesc.ball(radius);
-  } else if (geometry.type === "BufferGeometry") {
-    const vertices = new Float32Array(geometry.attributes.position.array);
-    const indices = new Uint32Array(geometry.index.array);
-    return RAPIER.ColliderDesc.trimesh(vertices, indices);
-  }
-
-  return null;
-}
-
-async function RapierPhysics() {
-  if (RAPIER === null) {
-    RAPIER = await import(RAPIER_PATH);
-    await RAPIER.init();
-  }
-
-  // Docs: https://rapier.rs/docs/api/javascript/JavaScript3D/
-
-  const gravity = new THREE.Vector3(0.0, -9.81, 0.0);
-  const worldRapier = new RAPIER.World(gravity);
-
-  const _vector = new THREE.Vector3();
-  const _quaternion = new THREE.Quaternion();
-  const _matrix = new THREE.Matrix4();
-
-  function addMesh(mesh, mass = 0, restitution = 0, player) {
-    const shape = getCollider(mesh.geometry);
-
-    if (shape === null) return;
-
-    shape.setMass(mass);
-    shape.setRestitution(restitution);
-
-    const body = mesh.isInstancedMesh
-      ? createInstancedBody(mesh, mass, shape)
-      : createBody(mesh.position, mesh.quaternion, mass, shape);
-
-    if (mass > 0 || player === true) {
-      meshes.push(mesh);
-      meshMap.set(mesh, body);
-    }
-  }
-
-  function createInstancedBody(mesh, mass, shape) {
-    const array = mesh.instanceMatrix.array;
-
-    const bodies = [];
-
-    for (let i = 0; i < mesh.count; i++) {
-      const position = _vector.fromArray(array, i * 16 + 12);
-      bodies.push(createBody(position, null, mass, shape));
-    }
-
-    return bodies;
-  }
-
-  function createBody(position, quaternion, mass, shape) {
-    const desc =
-      mass > 0 ? RAPIER.RigidBodyDesc.dynamic() : RAPIER.RigidBodyDesc.fixed();
-    desc.setTranslation(...position);
-    if (quaternion !== null) desc.setRotation(quaternion);
-
-    const body = worldRapier.createRigidBody(desc);
-    worldRapier.createCollider(shape, body);
-
-    return body;
-  }
-
-  function setMeshPosition(mesh, position, index = 0) {
-    let body = meshMap.get(mesh);
-
-    if (mesh.isInstancedMesh) {
-      body = body[index];
-    }
-
-    body.setAngvel(ZERO);
-    body.setLinvel(ZERO);
-    body.setTranslation(position);
-  }
-
-  function setMeshVelocity(mesh, velocity, index = 0) {
-    let body = meshMap.get(mesh);
-
-    if (mesh.isInstancedMesh) {
-      body = body[index];
-    }
-
-    body.setLinvel(velocity);
-  }
-
-  function setMeshPositionAndRotation(mesh, position, quaternion, index = 0) {
-    let body = meshMap.get(mesh);
-
-    if (mesh.isInstancedMesh) {
-      body = body[index];
-    }
-
-    body.setAngvel(ZERO);
-    body.setLinvel(ZERO);
-    body.setTranslation(position);
-    body.setRotation(quaternion);
-  }
-
-  const clock2 = new THREE.Clock();
-
-  function step() {
-    worldRapier.timestep = clock2.getDelta();
-    let eventQueue = new RAPIER.EventQueue(true);
-    worldRapier.step(eventQueue);
-    eventQueue.drainCollisionEvents((handle1, handle2, started) => {
-      console.log("eventQueue");
-    });
-    eventQueue.drainContactForceEvents((event) => {
-      let handle1 = event.collider1(); // Handle of the first collider involved in the event.
-      let handle2 = event.collider2(); // Handle of the second collider involved in the event.
-      /* Handle the contact force event. */
-      console.log("H1: " + handle1);
-      console.log("H2: " + handle2);
-    });
-    //
-
-    for (let i = 0, l = meshes.length; i < l; i++) {
-      const mesh = meshes[i];
-
-      if (mesh.isInstancedMesh) {
-        const array = mesh.instanceMatrix.array;
-        const bodies = meshMap.get(mesh);
-
-        for (let j = 0; j < bodies.length; j++) {
-          const body = bodies[j];
-
-          const position = body.translation();
-          _quaternion.copy(body.rotation());
-
-          _matrix.compose(position, _quaternion, _scale).toArray(array, j * 16);
-        }
-
-        mesh.instanceMatrix.needsUpdate = true;
-        mesh.computeBoundingSphere();
-      } else {
-        const body = meshMap.get(mesh);
-        mesh.position.copy(body.translation());
-        mesh.quaternion.copy(body.rotation());
-      }
-    }
-  }
-  // animate
-
-  setInterval(step, 1000 / frameRate);
-
-  return {
-    addMesh: addMesh,
-    setMeshPosition: setMeshPosition,
-    setMeshVelocity: setMeshVelocity,
-    setMeshPositionAndRotation: setMeshPositionAndRotation,
-  };
 }
 
 /////////////////////////
@@ -5586,52 +6396,44 @@ function pauseGuide() {
 
 function togglePhysics() {
   if (!enableBalls) {
-    if (spheres === undefined) {
-      const geometry = new THREE.IcosahedronGeometry(0.05, 1);
+    let count = 0;
+    for (let i = 0; i < ballsLab; i++) {
       const material = new THREE.MeshLambertMaterial();
-
-      spheres = new THREE.InstancedMesh(geometry, material, 100);
-      spheres.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // will be updated every frame
-      scene.add(spheres);
-
-      const matrix = new THREE.Matrix4();
-      const color = new THREE.Color();
-
-      for (let i = 0; i < spheres.count; i++) {
-        const x = Math.random() * 4 - 2;
-        const y = Math.random() * 1 + 1;
-        const z = Math.random() * 4 - 2;
-
-        matrix.setPosition(x, y, z);
-        spheres.setMatrixAt(i, matrix);
-        var ballColor = i % 3;
-        if (ballColor == 0) {
-          spheres.setColorAt(i, color.setHex(0xb0b3b2));
-        } else if (ballColor == 1) {
-          spheres.setColorAt(i, color.setHex(0x231f20));
-        } else if (ballColor == 2) {
-          spheres.setColorAt(i, color.setHex(0xeec629));
-        }
+      var ballColor = i % 3;
+      if (ballColor == 0) {
+        material.color.setHex(0xb0b3b2);
+      } else if (ballColor == 1) {
+        material.color.setHex(0x231f20);
+      } else if (ballColor == 2) {
+        material.color.setHex(0xeec629);
       }
-      physics.addMesh(spheres, 1, 1.1);
-      socket.emit("debug", "Spheres added");
+      //count = count + 1;
+      phy.add({
+        name: "sphere" + i,
+        type: "sphere",
+        size: [0.03],
+        pos: [Math.random() * 3, 3, Math.random() * 3],
+        mass: 0.1,
+        material: material,
+        restitution: 0.3,
+        friction: 0,
+        linearVelocity: [0, 0, 0],
+      });
+      enableBalls = true;
     }
-    spheres.visible = true;
-    spheres.renderOrder = 1;
-    enableBalls = true;
-    if (stlButton.visible) {
-      //buttonGroup.visible = !buttonGroup.visible;
+  } else if (enableBalls) {
+    for (let i = 0; i < ballsLab; i++) {
+      phy.remove("sphere" + i);
     }
-  } else {
     enableBalls = false;
-    spheres.visible = false;
   }
+  console.log(enableBalls);
 }
 
 function togglePrinter() {
   ender3Group.visible = !ender3Group.visible;
   lineFilament.visible = !lineFilament.visible;
-  desk.visible = !desk.visible;
+  //desk.visible = !desk.visible;
   printerButtonGroup.visible = !printerButtonGroup.visible;
   // if (boatMeshes.visible === true && ender3Group.visible === true){
   //  boatMeshes.visible = false;
@@ -5658,16 +6460,19 @@ async function togglePrinterOn(index) {
   const timer = (ms) => new Promise((res) => setTimeout(res, ms));
   printing = 1;
   let printerPath = [];
-  if (activeMesh === "test") {
-    printerPath = printerPathTest;
-    //  console.log("test");
-  } else if (activeMesh === "owl") {
-    printerPath = printerPathOwl;
-    console.log("owl");
-  } else if (activeMesh === "boat") {
-    printerPath = printerPathBoat;
-    console.log("boat");
+  if (activeMesh == "test") {
+    for (let i = 0; i < printerPathArray[0].length; i++) {
+      printerPath.push(printerPathArray[0][i]);
+    }
   }
+  if (activeMesh == "owl") {
+    // printerPath = printerPathArray[1];
+  }
+  if (activeMesh == "boat") {
+    // printerPath = printerPathArray[2];
+  }
+  console.log(activeMesh);
+  console.log(printerPath);
   var MAX_POINTS = printerPath.length; //Pre-set the number of vertexes needed in buffer memory
   var drawCount = 2;
   if (!lineBoatState) {
@@ -6011,9 +6816,12 @@ function logCallFunction(emit, data) {
   } else if (emit == "ballsFromServer") {
     if (enablePhysics) {
       let myData = JSON.parse(data);
-      physics.setMeshPosition(spheres, myData.pos, myData.count);
-      physics.setMeshVelocity(spheres, myData.vel, myData.count);
-      if (++count === spheres.count) {
+      phy.change({
+        name: "sphere" + count,
+        pos: [myData.pos.x, myData.pos.y, myData.pos.z],
+        linearVelocity: [myData.vel.x, myData.vel.y, myData.vel.z],
+      });
+      if (++count >= ballsLab) {
         count = 0;
       }
     }
@@ -6043,6 +6851,103 @@ function loadSockets() {
     updateFilament();
   });
   /////////////////////////
+
+  socket.on("button1ToClient", function (data) {
+    button1Pressed();
+  });
+
+  socket.on("button2ToClient", function (data) {
+    button2Pressed();
+  });
+
+  socket.on("button3ToClient", function (data) {
+    button3Pressed();
+  });
+
+  socket.on("button4ToClient", function (data) {
+    button4Pressed();
+  });
+
+  socket.on("button5ToClient", function (data) {
+    button5Pressed();
+  });
+
+  socket.on("updatePaintToClient", function (data) {
+    let paint = new THREE.Vector3(data.cursor.x, data.cursor.y, data.cursor.z);
+    if (data.controllerName === "left") {
+      painter1.lineTo(paint);
+      painter1.update();
+    } else {
+      painter2.lineTo(paint);
+      painter2.update();
+    }
+  });
+
+  socket.on("updatePaintStartToClient", function (data) {
+    let paint = new THREE.Vector3(data.cursor.x, data.cursor.y, data.cursor.z);
+    if (data.controllerName === "left") {
+      painter1.moveTo(paint);
+    } else {
+      painter2.moveTo(paint);
+    }
+  });
+
+  socket.on("exitButtonToClient", function (data) {
+    exitButtonPressed();
+    console.log("exit button pressed");
+  });
+
+  socket.on("resetButtonToClient", function (data) {
+    resetButtonPressed();
+    console.log("reset button pressed");
+  });
+
+  socket.on("gravityButtonToClient", function (data) {
+    gravityButtonPressed();
+    console.log("gravity button pressed");
+  });
+
+  socket.on("clearPaintButtonToClient", function (data) {
+    clearPaintButtonPressed();
+    console.log("Clear paint button pressed");
+  });
+
+  socket.on("occlusionButtonToClient", function (data) {
+    occlusionButtonPressed();
+    console.log("occlusion button pressed");
+  });
+
+  socket.on("addMeshDetectionPhysicsToClient", function (data) {
+    if (!userArray[0].vr) {
+      processMeshesToClient(data);
+      console.log("Add room mesh");
+    }
+  });
+
+  socket.on("centerOfRotationToClient", function (data) {
+    centerOfRotation.position.set(data.CORposX, data.CORposY, data.CORposZ);
+    centerOfRotation.rotation.set(data.CORrotX, data.CORrotY, data.CORrotZ);
+  });
+
+  socket.on("updateProteinGroupToClient", function (data) {
+    console.log(data);
+    var quaternion = new THREE.Quaternion(
+      data.quat[0],
+      data.quat[1],
+      data.quat[2],
+      data.quat[3]
+    );
+    if (activeMesh == "protein") {
+      proteinGroup.applyQuaternion(quaternion);
+    } else if (activeMesh == "boat") {
+      boatMeshes.applyQuaternion(quaternion);
+    } else if (activeMesh == "test") {
+      testMeshes.applyQuaternion(quaternion);
+    } else if (activeMesh == "owl") {
+      owlMeshes.applyQuaternion(quaternion);
+    }
+    centerOfRotation.rotation.set(0, 0, 0);
+  });
 
   socket.on("addControllerToClient", function (data) {
     if (scene.getObjectByName(data.id) === undefined) {
@@ -6083,10 +6988,13 @@ function loadSockets() {
 
   socket.on("ballsFromServer", function (data) {
     if (enablePhysics) {
-      physics.setMeshPosition(spheres, data.pos, data.count);
-      physics.setMeshVelocity(spheres, data.vel, data.count);
+      phy.change({
+        name: "sphere" + count,
+        pos: [data.pos.x, data.pos.y, data.pos.z],
+        linearVelocity: [data.vel.x, data.vel.y, data.vel.z],
+      });
 
-      if (++count === spheres.count) {
+      if (++count >= ballsLab) {
         count = 0;
       }
     }
@@ -6100,21 +7008,21 @@ function loadSockets() {
         var position1 = new THREE.Vector3(-1001, 0, -1001);
         var position2 = new THREE.Vector3(-1002, 0, -1002);
         var quaternion = new THREE.Quaternion(0, 0, 0, 0);
-        physics.setMeshPositionAndRotation(cubeGroup, position, quaternion, i);
+
         let index1 = 2 * i;
         let index2 = 2 * i + 1;
-        physics.setMeshPositionAndRotation(
-          controllerGroup,
-          position2,
-          quaternion,
-          index1
-        );
-        physics.setMeshPositionAndRotation(
-          controllerGroup,
-          position2,
-          quaternion,
-          index2
-        );
+        phy.change({
+          name: "cube" + i,
+          pos: [position.x, position.y, position.z],
+        });
+        phy.change({
+          name: "controller" + index1,
+          pos: [position1.x, position1.y, position1.z],
+        });
+        phy.change({
+          name: "controller" + index2,
+          pos: [position2.x, position2.y, position2.z],
+        });
       }
 
       //Move the cube if it in the middle of userArray
@@ -6286,19 +7194,10 @@ function loadSockets() {
     } else {
       //gcodeMesh.children[1].visible = false;
     }
-
-    //stlMesh.visible = roomState.stl;
-    // wireframeMesh.visible = roomState.wireframe;
-    //gcodeMesh.visible = roomState.gcode;
-    //gcodeMeshLayer.visible = roomState.toggleLayer;
   });
 
   socket.on("rotateBoat", function (data) {
     centerOfRotation.rotation.y = data.centerOfRotationY;
-    //stlMesh.rotation.z = data.stlMeshZ;
-    //wireframeMesh.rotation.z = data.wireframeMeshZ;
-    //gcodeMeshParent.rotation.y = data.gcodeMeshParentY;
-    //boundingBoxes.rotation.y = data.boudningBoxesY;
   });
 
   socket.on("scaleBoat", function (data) {
@@ -6377,21 +7276,21 @@ function loadSockets() {
         var position1 = new THREE.Vector3(-1001, 0, -1001);
         var position2 = new THREE.Vector3(-1002, 0, -1002);
         var quaternion = new THREE.Quaternion(0, 0, 0, 0);
-        physics.setMeshPositionAndRotation(cubeGroup, position, quaternion, i);
+        phy.change({
+          name: "cube" + i,
+          pos: [position.x, position.y, position.z],
+        });
+        // physics.setMeshPositionAndRotation(cubeGroup, position, quaternion, i);
         let index1 = 2 * i;
         let index2 = 2 * i + 1;
-        physics.setMeshPositionAndRotation(
-          controllerGroup,
-          position2,
-          quaternion,
-          index1
-        );
-        physics.setMeshPositionAndRotation(
-          controllerGroup,
-          position3,
-          quaternion,
-          index2
-        );
+        phy.change({
+          name: "controller" + index1,
+          pos: [position1.x, position1.y, position1.z],
+        });
+        phy.change({
+          name: "controller" + index2,
+          pos: [position2.x, position2.y, position2.z],
+        });
       }
     }
 
@@ -6449,115 +7348,204 @@ function loadSockets() {
   });
 
   socket.on("updatePosFromServer", function (data) {
-    if (!playerPhysics) {
-      var cube = scene.getObjectByName(data.id);
-      if (cube !== undefined) {
-        cube.position.x = data.camPos.x;
-        cube.position.y = data.camPos.y - 0.4;
-        cube.position.z = data.camPos.z;
-        cube.setRotationFromEuler(data.camRot);
-
-        if (newAvatars) {
-          cube.rotation.y += Math.PI;
-          cube.rotation.z = -cube.rotation.z;
-          //cube.rotation.x = 0 - data.camRot.x;
-          //cube.rotation.z = data.camRot.z;
-          //cube.rotation.z += Math.PI;
-        }
-
-        var con1Name = "controller1";
-        var con2Name = "controller2";
-        var cubeCon1Name = cube.name.concat(con1Name);
-        var cubeCon2Name = cube.name.concat(con2Name);
-        var con1 = scene.getObjectByName(cubeCon1Name);
-        var con2 = scene.getObjectByName(cubeCon2Name);
-
-        if (data.con1 === 1) {
-          con1.position.x = data.con1Pos.x;
-          con1.position.y = data.con1Pos.y;
-          con1.position.z = data.con1Pos.z;
-          con1.setRotationFromEuler(data.con1Rot);
-        }
-        if (data.con2 === 1) {
-          con2.position.x = data.con2Pos.x;
-          con2.position.y = data.con2Pos.y;
-          con2.position.z = data.con2Pos.z;
-          con2.setRotationFromEuler(data.con2Rot);
-        }
-      }
-    }
     if (playerPhysics) {
       if (!showVR) {
         for (let i = 0; i < userArray.length; i++) {
           if (userArray[i].id === data.id) {
             const color = new THREE.Color();
-            if (cubeGroup !== undefined) {
-              cubeGroup.setColorAt(i, color.set(data.color));
-              cubeGroup.instanceColor.needsUpdate = true;
-            }
-            let position = new THREE.Vector3();
-            position.x = data.camPos.x;
-            position.y = data.camPos.y - 0.4;
-            position.z = data.camPos.z;
-            let quaternion = new THREE.Quaternion();
-            quaternion.x = data.camQuat[0];
-            quaternion.y = data.camQuat[1];
-            quaternion.z = data.camQuat[2];
-            quaternion.w = data.camQuat[3];
-            if (cubeGroup !== undefined) {
-              physics.setMeshPositionAndRotation(
-                cubeGroup,
-                position,
-                quaternion,
-                i
+            color.set(data.color);
+            if (userArray[i].vr) {
+              let cameraPosition = new THREE.Vector3(
+                data.camPos.x,
+                data.camPos.y - 1.2,
+                data.camPos.z
               );
+              let cameraRotation = new THREE.Quaternion(
+                data.camQuat[0],
+                data.camQuat[1],
+                data.camQuat[2],
+                data.camQuat[3]
+              );
+              if (!newAvatar) {
+                phy.change({
+                  name: "cube" + i,
+                  pos: [data.camPos.x, data.camPos.y, data.camPos.z],
+                  quat: [
+                    data.camQuat[0],
+                    data.camQuat[1],
+                    data.camQuat[2],
+                    data.camQuat[3],
+                  ],
+                  color: color,
+                });
+              }
+
+              if (newAvatar) {
+                avatarModel.position.copy(cameraPosition);
+                head.quaternion.copy(cameraRotation);
+                //avatar.leftHand.position.copy(controller1Position);
+                //avatar.leftHand.rotation.copy(controller1Rotation);
+                //avatar.rightHand.position.copy(controller2Position);
+                //avatar.rightHand.rotation.copy(controller2Rotation);
+              }
+            } else {
+              if (!newAvatar) {
+                phy.change({
+                  name: "cube" + i,
+                  pos: [data.camPos.x, data.camPos.y, data.camPos.z],
+                  rot: [
+                    (data.camRot._x * 180) / Math.PI,
+                    (data.camRot._y * 180) / Math.PI,
+                    (data.camRot._z * 180) / Math.PI,
+                  ],
+                  color: color,
+                });
+              }
+
+              if (newAvatar) {
+                avatarModel.position.set(
+                  data.camPos.x,
+                  data.camPos.y,
+                  data.camPos.z
+                );
+                avatarModel.rotation.x = data.camRot._x;
+                avatarModel.rotation.y = data.camRot._y;
+                avatarModel.rotation.z = data.camRot._z;
+              }
             }
             if (userArray[i].vr) {
-              let position1 = new THREE.Vector3();
-              position1.x = data.con1Pos.x;
-              position1.y = data.con1Pos.y;
-              position1.z = data.con1Pos.z;
-              let quaternion1 = new THREE.Quaternion();
-              quaternion1.x = data.con1Quat[0];
-              quaternion1.y = data.con1Quat[1];
-              quaternion1.z = data.con1Quat[2];
-              quaternion1.w = data.con1Quat[3];
-              let position2 = new THREE.Vector3();
-              position2.x = data.con2Pos.x;
-              position2.y = data.con2Pos.y;
-              position2.z = data.con2Pos.z;
-              let quaternion2 = new THREE.Quaternion();
-              quaternion2.x = data.con2Quat[0];
-              quaternion2.y = data.con2Quat[1];
-              quaternion2.z = data.con2Quat[2];
-              quaternion2.w = data.con2Quat[3];
               let index1 = 2 * i;
               let index2 = 2 * i + 1;
-              if (cubeGroup !== undefined) {
-                controllerGroup.setColorAt(index1, color.set(data.color));
-                controllerGroup.setColorAt(index2, color.set(data.color));
+              if (!newAvatar) {
+                phy.change({
+                  name: "controller" + index1,
+                  pos: [data.con1Pos.x, data.con1Pos.y, data.con1Pos.z],
+                  rot: [
+                    (data.con1Rot._x * 180) / Math.PI,
+                    (data.con1Rot._y * 180) / Math.PI,
+                    (data.con1Rot._z * 180) / Math.PI,
+                  ],
+                  color: color,
+                });
               }
-              if (controllerGroup !== undefined) {
-                physics.setMeshPositionAndRotation(
-                  controllerGroup,
-                  position1,
-                  quaternion1,
-                  index1
+
+              if (newAvatar) {
+                const controller1WorldPosition = new THREE.Vector3(
+                  data.con1Pos.x,
+                  data.con1Pos.y,
+                  data.con1Pos.z
+                );
+                const controller1WorldQuaternion = new THREE.Quaternion(
+                  data.con1Quat[0],
+                  data.con1Quat[1],
+                  data.con1Quat[2],
+                  data.con1Quat[3]
                 );
 
-                physics.setMeshPositionAndRotation(
-                  controllerGroup,
-                  position2,
-                  quaternion2,
-                  index2
+                // Get world position and rotation of the parent bone
+                const parentWorldPosition = new THREE.Vector3(
+                  data.camPos.x,
+                  data.camPos.y,
+                  data.camPos.z
                 );
-                controllerGroup.instanceColor.needsUpdate = true;
+                const parentWorldQuaternion = new THREE.Quaternion(
+                  data.camQuat[0],
+                  data.camQuat[1],
+                  data.camQuat[2],
+                  data.camQuat[3]
+                );
+
+                let controller2WorldPosition = new THREE.Vector3(
+                  data.con2Pos.x,
+                  data.con2Pos.y,
+                  data.con2Pos.z
+                );
+                const controller2WorldQuaternion = new THREE.Quaternion(
+                  data.con2Quat[0],
+                  data.con2Quat[1],
+                  data.con2Quat[2],
+                  data.con2Quat[3]
+                );
+
+                // Transform controller position relative to the camera
+                controller1WorldPosition.sub(parentWorldPosition);
+                controller2WorldPosition.sub(parentWorldPosition);
+
+                // Update controller position
+                leftHand.position.copy(controller1WorldPosition);
+                leftHand.quaternion.copy(controller1WorldQuaternion);
+
+                rightHand.position.copy(controller2WorldPosition);
+                rightHand.quaternion.copy(controller2WorldQuaternion);
               }
+              /*
+              const controllerWorldPosition = new THREE.Vector3(
+                data.con1Pos.x,
+                data.con1Pos.y,
+                data.con1Pos.z
+              ); // Create a vector to hold the world position of the controller
+              const avatarWorldPosition = new THREE.Vector3(
+                data.camPos.x,
+                data.camPos.y,
+                data.camPos.z
+              ); // Create a vector to hold the world position of the controller
+              const controllerLocalPosition = controllerWorldPosition
+                .clone()
+                .sub(avatarWorldPosition);
+              leftHand.position.copy(controllerLocalPosition);
+              */
+              // const controllerLocalPosition = controllerWorldPosition.applyMatrix4(leftHand.matrixWorld.clone().invert());
+
+              // Set the position of the left hand bone to the transformed controller position
+              //leftHand.position.set(controllerLocalPosition.x, controllerLocalPosition.y, controllerLocalPosition.z);
+
+              //var worldPosition = new THREE.Vector3();
+              //worldPosition.setFromMatrixPosition(head.matrixWorld);
+
+              // Convert the world position to the local space of the child object
+              //var localPosition = new THREE.Vector3();
+              //leftHand.worldToLocal(worldPosition);
+
+              // Set the position of the child object based on the local position obtained
+              //leftHand.position.copy(localPosition);
+
+              /* 
+                leftHand.position.set(
+                data.con1Pos.x - avatarModel.position.x,
+                data.con1Pos.y - avatarModel.position.y-0.5,
+                data.con1Pos.z - avatarModel.position.z,
+               );
+              leftHand.rotation.x = data.con1Rot._x;
+              leftHand.rotation.y = data.con1Rot._y;
+              leftHand.rotation.z = data.con1Rot._z;
+              
+              */
+              if (!newAvatar) {
+                phy.change({
+                  name: "controller" + index2,
+                  pos: [data.con2Pos.x, data.con2Pos.y, data.con2Pos.z],
+                  rot: [
+                    (data.con2Rot._x * 180) / Math.PI,
+                    (data.con2Rot._y * 180) / Math.PI,
+                    (data.con2Rot._z * 180) / Math.PI,
+                  ],
+                  color: color,
+                });
+              }
+
+              // worldPosition.setFromMatrixPosition(head.matrixWorld);
+
+              // Convert the world position to the local space of the child object
+              //rightHand.worldToLocal(worldPosition);
+
+              // Set the position of the child object based on the local position obtained
+              //rightHand.position.copy(localPosition);
             }
           }
         }
       }
     }
+
     if (showVR) {
       for (let i = 0; i < userArray.length; i++) {
         if (userArray[i].id !== showID) {
@@ -6576,61 +7564,75 @@ function loadSockets() {
             quaternion.y = data.camQuat[1];
             quaternion.z = data.camQuat[2];
             quaternion.w = data.camQuat[3];
-            if (cubeGroup !== undefined) {
-              physics.setMeshPositionAndRotation(
-                cubeGroup,
-                position,
-                quaternion,
-                i
-              );
-            }
-            if (userArray[i].vr) {
-              let position1 = new THREE.Vector3();
-              position1.x = data.con1Pos.x;
-              position1.y = data.con1Pos.y;
-              position1.z = data.con1Pos.z;
-              let quaternion1 = new THREE.Quaternion();
-              quaternion1.x = data.con1Quat[0];
-              quaternion1.y = data.con1Quat[1];
-              quaternion1.z = data.con1Quat[2];
-              quaternion1.w = data.con1Quat[3];
-              let position2 = new THREE.Vector3();
-              position2.x = data.con2Pos.x;
-              position2.y = data.con2Pos.y;
-              position2.z = data.con2Pos.z;
-              let quaternion2 = new THREE.Quaternion();
-              quaternion2.x = data.con2Quat[0];
-              quaternion2.y = data.con2Quat[1];
-              quaternion2.z = data.con2Quat[2];
-              quaternion2.w = data.con2Quat[3];
-              let index1 = 2 * i;
-              let index2 = 2 * i + 1;
-              if (cubeGroup !== undefined) {
-                controllerGroup.setColorAt(index1, color.set(data.color));
-                controllerGroup.setColorAt(index2, color.set(data.color));
-              }
-              if (controllerGroup !== undefined) {
-                physics.setMeshPositionAndRotation(
-                  controllerGroup,
-                  position1,
-                  quaternion1,
-                  index1
-                );
 
-                physics.setMeshPositionAndRotation(
-                  controllerGroup,
-                  position2,
-                  quaternion2,
-                  index2
-                );
-                controllerGroup.instanceColor.needsUpdate = true;
-              }
-            }
+            const rotation = new THREE.Euler();
+            quaternion.normalize();
+            rotation.setFromQuaternion(quaternion);
+            phy.change({
+              name: "cube" + i,
+              pos: [position.x, position.y, position.z],
+              rot: [
+                (rotation._x * 180) / Math.PI,
+                (rotation._y * 180) / Math.PI,
+                (rotation._z * 180) / Math.PI,
+              ],
+            });
+          }
+          if (userArray[i].vr) {
+            let position1 = new THREE.Vector3();
+            position1.x = data.con1Pos.x;
+            position1.y = data.con1Pos.y;
+            position1.z = data.con1Pos.z;
+            let quaternion1 = new THREE.Quaternion();
+            quaternion1.x = data.con1Quat[0];
+            quaternion1.y = data.con1Quat[1];
+            quaternion1.z = data.con1Quat[2];
+            quaternion1.w = data.con1Quat[3];
+            let position2 = new THREE.Vector3();
+            position2.x = data.con2Pos.x;
+            position2.y = data.con2Pos.y;
+            position2.z = data.con2Pos.z;
+            let quaternion2 = new THREE.Quaternion();
+            quaternion2.x = data.con2Quat[0];
+            quaternion2.y = data.con2Quat[1];
+            quaternion2.z = data.con2Quat[2];
+            quaternion2.w = data.con2Quat[3];
+
+            const rotation1 = new THREE.Euler();
+            const rotation2 = new THREE.Euler();
+            quaternion1.normalize();
+            quaternion2.normalize();
+            rotation1.setFromQuaternion(quaternion1);
+            rotation2.setFromQuaternion(quaternion2);
+
+            let index1 = 2 * i;
+            let index2 = 2 * i + 1;
+
+            phy.change({
+              name: "controller" + index1,
+              pos: [position1.x, position1.y, position1.z],
+              rot: [
+                (rotation1._x * 180) / Math.PI,
+                (rotation1._y * 180) / Math.PI,
+                (rotation1._z * 180) / Math.PI,
+              ],
+            });
+
+            phy.change({
+              name: "controller" + index2,
+              pos: [position2.x, position2.y, position2.z],
+              rot: [
+                (rotation2._x * 180) / Math.PI,
+                (rotation2._y * 180) / Math.PI,
+                (rotation2._z * 180) / Math.PI,
+              ],
+            });
           }
         }
       }
+
       if (showID === data.id) {
-        controls.enabled = false;
+        // controls.enabled = false;
         let position = new THREE.Vector3();
         position.x = data.camPos.x;
         position.y = data.camPos.y;
@@ -6659,129 +7661,131 @@ function loadSockets() {
         quaternion2.z = data.con2Quat[2];
         quaternion2.w = data.con2Quat[3];
         let i = clients - 2;
-        //camPos.y = camPos.y - 0.4;
-        const color = new THREE.Color();
-        if (cubeGroup !== undefined) {
-          cubeGroup.setColorAt(i, color.set(data.color));
-          cubeGroup.instanceColor.needsUpdate = true;
+        const rotation = new THREE.Euler();
+        quaternion.normalize();
+        rotation.setFromQuaternion(quaternion);
+        phy.change({
+          name: "cube" + i,
+          pos: [position.x, position.y, position.z],
+          rot: [
+            (rotation._x * 180) / Math.PI,
+            (rotation._y * 180) / Math.PI,
+            (rotation._z * 180) / Math.PI,
+          ],
+        });
 
-          if (cubeGroup !== undefined) {
-            physics.setMeshPositionAndRotation(
-              cubeGroup,
-              position,
-              quaternion,
-              i
-            );
-          }
+        const rotation1 = new THREE.Euler();
+        const rotation2 = new THREE.Euler();
+        quaternion1.normalize();
+        quaternion2.normalize();
+        rotation.setFromQuaternion(quaternion1);
+        rotation.setFromQuaternion(quaternion2);
 
-          let index1 = 2 * i;
-          let index2 = 2 * i + 1;
-          if (cubeGroup !== undefined) {
-            controllerGroup.setColorAt(index1, color.set(data.color));
-            controllerGroup.setColorAt(index2, color.set(data.color));
-          }
-          if (controllerGroup !== undefined) {
-            physics.setMeshPositionAndRotation(
-              controllerGroup,
-              position1,
-              quaternion1,
-              index1
-            );
+        let index1 = 2 * i;
+        let index2 = 2 * i + 1;
 
-            physics.setMeshPositionAndRotation(
-              controllerGroup,
-              position2,
-              quaternion2,
-              index2
-            );
-            controllerGroup.instanceColor.needsUpdate = true;
-            voiceoverFrame++;
-            if (voiceoverFrame === 2) {
-              const geometryLine = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(0, 0, 0),
-                new THREE.Vector3(0, 0, -1),
-              ]);
-              let lineCon1 = new THREE.Line(geometryLine);
-              let lineCon2 = new THREE.Line(geometryLine);
-              let lineCam = new THREE.Line(geometryLine);
+        phy.change({
+          name: "controller" + index1,
+          pos: [position1.x, position1.y, position1.z],
+          rot: [
+            (rotation1._x * 180) / Math.PI,
+            (rotation1._y * 180) / Math.PI,
+            (rotation1._z * 180) / Math.PI,
+          ],
+        });
+        /*
 
-              scene.add(lineCon1);
-              scene.add(lineCon2);
-              //scene.add(lineCam);
+      phy.change({
+        name: "controller" + index2,
+        pos: [position2.x, position2.y, position2.z],
+        rot: [
+          (rotation2._x * 180) / Math.PI,
+          (rotation2._y * 180) / Math.PI,
+          (rotation2._z * 180) / Math.PI,
+        ],
+      });
+      */
+        voiceoverFrame++;
+        if (voiceoverFrame === 2) {
+          const geometryLine = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, 0, -1),
+          ]);
+          let lineCon1 = new THREE.Line(geometryLine);
+          let lineCon2 = new THREE.Line(geometryLine);
+          let lineCam = new THREE.Line(geometryLine);
 
-              lineCam.material.color.setHex(0x00ffff);
+          scene.add(lineCon1);
+          scene.add(lineCon2);
+          //scene.add(lineCam);
 
-              lineCon1.name = "showVRLine1";
-              lineCon1.scale.z = 5;
-              lineCon2.name = "showVRLine2";
-              lineCon2.scale.z = 5;
-              //lineCam.name = "lineCam";
-              // lineCam.scale.z = 5;
+          lineCam.material.color.setHex(0x00ffff);
+
+          lineCon1.name = "showVRLine1";
+          lineCon1.scale.z = 5;
+          lineCon2.name = "showVRLine2";
+          lineCon2.scale.z = 5;
+          //lineCam.name = "lineCam";
+          // lineCam.scale.z = 5;
+        }
+        if (voiceoverFrame > 3) {
+          voiceoverFrame = 3;
+        }
+        let showVRLC1 = scene.getObjectByName("showVRLine1");
+        let showVRLC2 = scene.getObjectByName("showVRLine2");
+        // let LCam = scene.getObjectByName("lineCam");
+        let con1Pos = position1;
+        let con2Pos = position2;
+        let con1Quat = quaternion1;
+        let con2Quat = quaternion2;
+        let camPos = position;
+        let camQuat = quaternion;
+        camera.position.x = camPos.x;
+        camera.position.y = camPos.y;
+        camera.position.z = camPos.z;
+        camera.quaternion.x = camQuat.x;
+        camera.quaternion.y = camQuat.y;
+        camera.quaternion.z = camQuat.z;
+        camera.quaternion.w = camQuat.w;
+        if (data.vr) {
+          showVRLC1.position.x = con1Pos.x;
+          showVRLC1.position.y = con1Pos.y;
+          showVRLC1.position.z = con1Pos.z;
+          showVRLC1.setRotationFromQuaternion(con1Quat);
+          showVRLC1.updateMatrix();
+          // lineCon2.position(con2Pos);
+          showVRLC2.position.x = con2Pos.x;
+          showVRLC2.position.y = con2Pos.y;
+          showVRLC2.position.z = con2Pos.z;
+          showVRLC2.setRotationFromQuaternion(con2Quat);
+          showVRLC2.updateMatrix();
+
+          const intersections1 = getIntersections(showVRLC1);
+          const intersections2 = getIntersections(showVRLC2);
+
+          if (intersections1.length > 0) {
+            const intersection = intersections1[0];
+            const object = intersection.object;
+            if (object.name !== activeMesh) {
+              object.material.emissive.r = 0.5;
+              intersected.push(object);
+
+              showVRLC1.scale.z = intersection.distance;
+            } else {
+              showVRLC1.scale.z = 5;
             }
-            if (voiceoverFrame > 3) {
-              voiceoverFrame = 3;
-            }
-            let showVRLC1 = scene.getObjectByName("showVRLine1");
-            let showVRLC2 = scene.getObjectByName("showVRLine2");
-            // let LCam = scene.getObjectByName("lineCam");
-            let con1Pos = position1;
-            let con2Pos = position2;
-            let con1Quat = quaternion1;
-            let con2Quat = quaternion2;
-            let camPos = position;
-            let camQuat = quaternion;
-            camera.position.x = camPos.x;
-            camera.position.y = camPos.y;
-            camera.position.z = camPos.z;
-            camera.quaternion.x = camQuat.x;
-            camera.quaternion.y = camQuat.y;
-            camera.quaternion.z = camQuat.z;
-            camera.quaternion.w = camQuat.w;
-            if (data.vr) {
-              showVRLC1.position.x = con1Pos.x;
-              showVRLC1.position.y = con1Pos.y;
-              showVRLC1.position.z = con1Pos.z;
-              showVRLC1.setRotationFromQuaternion(con1Quat);
-              showVRLC1.updateMatrix();
-              // lineCon2.position(con2Pos);
-              showVRLC2.position.x = con2Pos.x;
-              showVRLC2.position.y = con2Pos.y;
-              showVRLC2.position.z = con2Pos.z;
-              showVRLC2.setRotationFromQuaternion(con2Quat);
-              showVRLC2.updateMatrix();
-              // LCam.position.x = camPos.x;
-              //LCam.position.y = camPos.y + 0.4;
-              //LCam.position.z = camPos.z;
-              //LCam.setRotationFromQuaternion(camQuat);
-              // LCam.updateMatrix();
-              const intersections1 = getIntersections(showVRLC1);
-              const intersections2 = getIntersections(showVRLC2);
-              //const intersections3 = getIntersections(LCam);
-              if (intersections1.length > 0) {
-                const intersection = intersections1[0];
-                const object = intersection.object;
-                if (object.name !== activeMesh) {
-                  object.material.emissive.r = 0.5;
-                  intersected.push(object);
+          }
+          if (intersections2.length > 0) {
+            const intersection = intersections2[0];
 
-                  showVRLC1.scale.z = intersection.distance;
-                } else {
-                  showVRLC1.scale.z = 5;
-                }
-              }
-              if (intersections2.length > 0) {
-                const intersection = intersections2[0];
+            const object = intersection.object;
+            if (object.name !== activeMesh) {
+              object.material.emissive.r = 0.5;
+              intersected.push(object);
 
-                const object = intersection.object;
-                if (object.name !== activeMesh) {
-                  object.material.emissive.r = 0.5;
-                  intersected.push(object);
-
-                  showVRLC2.scale.z = intersection.distance;
-                } else {
-                  showVRLC2.scale.z = 5;
-                }
-              }
+              showVRLC2.scale.z = intersection.distance;
+            } else {
+              showVRLC2.scale.z = 5;
             }
           }
         }
@@ -6829,6 +7833,7 @@ function onTransitionEnd(event) {
   checkForXR();
   event.target.remove();
   socket.emit("requestRoomState", "");
+  labOff();
 }
 
 function playLog(timestamp) {
@@ -6922,498 +7927,476 @@ function playLog(timestamp) {
         let i = clients - 1;
         camPos.y = camPos.y - 0.4;
         const color = new THREE.Color();
-        if (cubeGroup !== undefined) {
-          cubeGroup.setColorAt(i, color.set(data.color));
-          cubeGroup.instanceColor.needsUpdate = true;
-        }
-        if (cubeGroup !== undefined) {
-          physics.setMeshPositionAndRotation(cubeGroup, camPos, camQuat, i);
-        }
+
+        const rotation = new THREE.Euler();
+        camQuat.normalize();
+        rotation.setFromQuaternion(camQuat);
+
+        phy.change({
+          name: "cube" + i,
+          pos: [camPos.x, camPos.y, camPos.z],
+          rot: [
+            (rotation._x * 180) / Math.PI,
+            (rotation._y * 180) / Math.PI,
+            (rotation._z * 180) / Math.PI,
+          ],
+        });
 
         let index1 = 2 * i;
         let index2 = 2 * i + 1;
-        if (cubeGroup !== undefined) {
-          controllerGroup.setColorAt(index1, color.set(data.color));
-          controllerGroup.setColorAt(index2, color.set(data.color));
-        }
-        if (controllerGroup !== undefined) {
-          physics.setMeshPositionAndRotation(
-            controllerGroup,
-            con1Pos,
-            con1Quat,
-            index1
-          );
 
-          physics.setMeshPositionAndRotation(
-            controllerGroup,
-            con2Pos,
-            con2Quat,
-            index2
-          );
-          controllerGroup.instanceColor.needsUpdate = true;
-          if (voiceoverFrame === 2) {
-            const geometryLine = new THREE.BufferGeometry().setFromPoints([
-              new THREE.Vector3(0, 0, 0),
-              new THREE.Vector3(0, 0, -1),
-            ]);
-            if (logLineHands) {
-              let lineCon1 = new THREE.Line(geometryLine);
-              let lineCon2 = new THREE.Line(geometryLine);
+        let rotation1 = new THREE.Euler();
+        con1Quat.normalize();
+        rotation1.setFromQuaternion(con1Quat);
 
-              scene.add(lineCon1);
-              scene.add(lineCon2);
+        phy.change({
+          name: "controller" + index1,
+          pos: [con1Pos.x, con1Pos.y, con1Pos.z],
+          // rot:[rotation1._x*180/Math.PI, rotation1._y*180/Math.PI, rotation1._z*180/Math.PI],
+          debug: true,
+        });
 
-              lineCon1.name = "line1";
-              lineCon1.scale.z = 5;
-              lineCon2.name = "line2";
-              lineCon2.scale.z = 5;
-            }
-            if (logLineHead) {
-              let lineCam = new THREE.Line(geometryLine);
-              scene.add(lineCam);
-              lineCam.material.color.setHex(0x00ffff);
+        let rotation2 = new THREE.Euler();
+        con2Quat.normalize();
+        rotation2.setFromQuaternion(con2Quat);
+        phy.change({
+          name: "controller" + index2,
+          pos: [con2Pos.x, con2Pos.y, con2Pos.z],
+          //  rot:[rotation2._x*180/Math.PI, rotation2._y*180/Math.PI, rotation2._z*180/Math.PI],
+        });
 
-              lineCam.name = "lineCam";
-              lineCam.scale.z = 5;
-            }
-
-            /////
-            //Temp fix, usually not in if statrement
-            if (heatMap) {
-              var dotGeometry = new THREE.BufferGeometry();
-              dotGeometry.setAttribute(
-                "position",
-                new THREE.Float32BufferAttribute([0, 0, 0], 3)
-              );
-              var dotMaterial = new THREE.PointsMaterial({
-                size: heatMapResolution,
-                color: 0x0000ff,
-              });
-
-              var dot = new THREE.Points(dotGeometry, dotMaterial);
-              dot.name = "dot";
-              dot.position.x = 1000;
-              let dotGroup = new THREE.Group();
-              dotGroup.name = "dotGroup";
-              dotGroup.add(dot);
-              scene.add(dotGroup);
-              dotGroup.visible = false;
-
-              var boxGeometry = new THREE.BoxGeometry(
-                heatMapResolution,
-                heatMapResolution,
-                heatMapResolution
-              );
-              // boxGeometry.renderOrder = 99;
-              var boxMaterial = new THREE.MeshPhysicalMaterial({
-                transparent: true,
-                opacity: 1,
-                depthTest: true,
-                depthWrite: true,
-                side: THREE.DoubleSide,
-              });
-              boxes = new THREE.InstancedMesh(boxGeometry, boxMaterial, 60000);
-              boxes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-              scene.add(boxes);
-              boxes.frustumCulled = false;
-              //boxes.renderOrder = -99;
-              for (let i = 0; i < boxes.count; i++) {
-                let x = 1000;
-                let y = 0;
-                let z = 0;
-                let matrix = new THREE.Matrix4();
-                matrix.setPosition(x, y, z);
-                boxes.setMatrixAt(i, matrix);
-                boxes.instanceMatrix.needsUpdate = true;
-                //boxes.instanceColor.needsUpdate = true;
-              }
-            }
-          }
-
-          if (heatMap) {
-            const positionAttribute = boxes.geometry.getAttribute("matrix");
-            const colorAttribute = boxes.geometry.getAttribute("color");
-            //positionAttribute.needsUpdate = true; // required after the first render
-            //colorAttribute.needsUpdate = true;
-          }
+        if (voiceoverFrame === 2) {
+          const geometryLine = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, 0, -1),
+          ]);
           if (logLineHands) {
-            let LC1 = scene.getObjectByName("line1");
-            let LC2 = scene.getObjectByName("line2");
-            if (LC1 !== undefined) {
-              LC1.position.x = con1Pos.x;
-              LC1.position.y = con1Pos.y;
-              LC1.position.z = con1Pos.z;
-              con1Quat.normalize();
-              LC1.setRotationFromQuaternion(con1Quat);
-              LC1.updateMatrix();
-              LC2.position.x = con2Pos.x;
-              LC2.position.y = con2Pos.y;
-              LC2.position.z = con2Pos.z;
-              con2Quat.normalize();
-              LC2.setRotationFromQuaternion(con2Quat);
-              LC2.updateMatrix();
+            let lineCon1 = new THREE.Line(geometryLine);
+            let lineCon2 = new THREE.Line(geometryLine);
 
-              const intersections1 = getIntersections(LC1);
-              const intersections2 = getIntersections(LC2);
-              if (intersections1.length > 0) {
-                const intersection = intersections1[0];
-                const object = intersection.object;
-                if (object.name !== "boat") {
-                  object.material.emissive.r = 0.5;
-                  intersected.push(object);
-                  if (heatMap) {
-                    let dot2 = scene.getObjectByName("dot");
-                    let dotGroup2 = scene.getObjectByName("dotGroup");
-                    let dot3 = dot2.clone();
-                    dot3.material = dot3.material.clone();
-                    // console.log(intersection);
-                    dot3.position.x =
-                      Math.round(
-                        (1 / heatMapResolution) * intersection.point.x
-                      ) /
-                      (1 / heatMapResolution);
-                    //console.log(dot3.position.x);
-                    dot3.position.y =
-                      Math.round(
-                        (1 / heatMapResolution) * intersection.point.y
-                      ) /
-                      (1 / heatMapResolution);
-                    dot3.position.z =
-                      Math.round(
-                        (1 / heatMapResolution) * intersection.point.z
-                      ) /
-                      (1 / heatMapResolution);
-                    dotGroup2.children.forEach(function (child) {
-                      if (child.position.equals(dot3.position)) {
-                        let color = new THREE.Color(child.material.color);
-                        if (color.r === 0 && color.g === 0 && color.b === 1) {
-                          color.r = 0;
-                          color.g = Math.round(10 * (color.g + 0.1)) / 10;
-                          color.b = Math.round(10 * (color.b - 0.1)) / 10;
-                        } else if (
-                          color.r === 0 &&
-                          color.g < 1 &&
-                          color.b < 1
-                        ) {
-                          color.r = 0;
-                          color.g = Math.round(10 * (color.g + 0.1)) / 10;
-                          color.b = Math.round(10 * (color.b - 0.1)) / 10;
-                        } else if (
-                          color.r === 0 &&
-                          color.b === 0 &&
-                          color.g === 1
-                        ) {
-                          color.r = Math.round(10 * (color.r + 0.1)) / 10;
-                          color.b = 0;
-                          color.g = 1;
-                        } else if (
-                          color.r < 1 &&
-                          color.g === 1 &&
-                          color.b === 0
-                        ) {
-                          color.r = Math.round(10 * (color.r + 0.1)) / 10;
-                          color.b = 0;
-                          color.g = 1;
-                        } else if (
-                          color.r === 1 &&
-                          color.g === 1 &&
-                          color.b === 0
-                        ) {
-                          color.r = 1;
-                          color.b = 0;
-                          color.g = Math.round(10 * (color.g - 0.1)) / 10;
-                          //  console.log("yellow");
-                        } else if (
-                          color.r === 1 &&
-                          color.g > 0 &&
-                          color.b === 0
-                        ) {
-                          color.r = 1;
-                          color.b = 0;
-                          color.g = Math.round(10 * (color.g - 0.1)) / 10;
-                          //  console.log("yellow");
-                        } else if (
-                          color.r === 1 &&
-                          color.g === 0 &&
-                          color.b === 0
-                        ) {
-                          color.r = 1;
-                          color.b = 0;
-                          color.g = 0;
-                          //  console.log("red");
-                        }
-                        child.remove();
-                        dot3.material.color.set(color);
-                        dotGroup2.add(dot3);
-                        let i = Array.from(dotGroup2.children).indexOf(child);
-                        let matrix = new THREE.Matrix4();
-                        matrix.setPosition(
-                          dot3.position.x,
-                          dot3.position.y,
-                          dot3.position.z
-                        );
-                        boxes.setMatrixAt(i, matrix);
-                        //let color2 = new THREE.Color()
-                        //console.log(boxes);
-                        boxes.setColorAt(i, color);
+            scene.add(lineCon1);
+            scene.add(lineCon2);
 
-                        boxes.instanceMatrix.needsUpdate = true;
-                        boxes.instanceColor.needsUpdate = true;
-                      } else {
-                        dotGroup2.add(dot3);
-                      }
-                    });
-                  }
-                }
-                LC1.scale.z = intersection.distance;
-              } else {
-                LC1.scale.z = 5;
-              }
-              if (intersections2.length > 0) {
-                const intersection = intersections2[0];
-
-                const object = intersection.object;
-                if (object.name !== "boat") {
-                  object.material.emissive.r = 0.5;
-                  intersected.push(object);
-                  if (heatMap) {
-                    let dot2 = scene.getObjectByName("dot");
-                    let dotGroup2 = scene.getObjectByName("dotGroup");
-                    let dot3 = dot2.clone();
-                    dot3.material = dot3.material.clone();
-                    // console.log(intersection);
-                    dot3.position.x =
-                      Math.round(
-                        (1 / heatMapResolution) * intersection.point.x
-                      ) /
-                      (1 / heatMapResolution);
-                    //console.log(dot3.position.x);
-                    dot3.position.y =
-                      Math.round(
-                        (1 / heatMapResolution) * intersection.point.y
-                      ) /
-                      (1 / heatMapResolution);
-                    dot3.position.z =
-                      Math.round(
-                        (1 / heatMapResolution) * intersection.point.z
-                      ) /
-                      (1 / heatMapResolution);
-                    dotGroup2.children.forEach(function (child) {
-                      if (child.position.equals(dot3.position)) {
-                        let color = new THREE.Color(child.material.color);
-                        if (color.r === 0 && color.g === 0 && color.b === 1) {
-                          color.r = 0;
-                          color.g = Math.round(10 * (color.g + 0.1)) / 10;
-                          color.b = Math.round(10 * (color.b - 0.1)) / 10;
-                        } else if (
-                          color.r === 0 &&
-                          color.g < 1 &&
-                          color.b < 1
-                        ) {
-                          color.r = 0;
-                          color.g = Math.round(10 * (color.g + 0.1)) / 10;
-                          color.b = Math.round(10 * (color.b - 0.1)) / 10;
-                        } else if (
-                          color.r === 0 &&
-                          color.b === 0 &&
-                          color.g === 1
-                        ) {
-                          color.r = Math.round(10 * (color.r + 0.1)) / 10;
-                          color.b = 0;
-                          color.g = 1;
-                        } else if (
-                          color.r < 1 &&
-                          color.g === 1 &&
-                          color.b === 0
-                        ) {
-                          color.r = Math.round(10 * (color.r + 0.1)) / 10;
-                          color.b = 0;
-                          color.g = 1;
-                        } else if (
-                          color.r === 1 &&
-                          color.g === 1 &&
-                          color.b === 0
-                        ) {
-                          color.r = 1;
-                          color.b = 0;
-                          color.g = Math.round(10 * (color.g - 0.1)) / 10;
-                          // console.log("yellow");
-                        } else if (
-                          color.r === 1 &&
-                          color.g > 0 &&
-                          color.b === 0
-                        ) {
-                          color.r = 1;
-                          color.b = 0;
-                          color.g = Math.round(10 * (color.g - 0.1)) / 10;
-                          // console.log("yellow");
-                        } else if (
-                          color.r === 1 &&
-                          color.g === 0 &&
-                          color.b === 0
-                        ) {
-                          color.r = 1;
-                          color.b = 0;
-                          color.g = 0;
-                          //  console.log("red");
-                        }
-                        child.remove();
-                        dot3.material.color.set(color);
-                        dotGroup2.add(dot3);
-                        dotGroup2.visible = false;
-                        let i = Array.from(dotGroup2.children).indexOf(child);
-                        let matrix = new THREE.Matrix4();
-                        matrix.setPosition(
-                          dot3.position.x,
-                          dot3.position.y,
-                          dot3.position.z
-                        );
-                        boxes.setMatrixAt(i, matrix);
-                        //let color2 = new THREE.Color()
-                        //console.log(boxes);
-                        boxes.setColorAt(i, color);
-
-                        boxes.instanceMatrix.needsUpdate = true;
-                        boxes.instanceColor.needsUpdate = true;
-                      } else {
-                        dotGroup2.add(dot3);
-                      }
-                    });
-                  }
-                }
-                LC2.scale.z = intersection.distance;
-              } else {
-                LC2.scale.z = 5;
-              }
-            }
+            lineCon1.name = "line1";
+            lineCon1.scale.z = 5;
+            lineCon2.name = "line2";
+            lineCon2.scale.z = 5;
           }
           if (logLineHead) {
-            let LCam = scene.getObjectByName("lineCam");
-            if (LCam !== undefined) {
-              LCam.position.x = camPos.x;
-              LCam.position.y = camPos.y + 0.4;
-              LCam.position.z = camPos.z;
-              camQuat.normalize();
-              LCam.setRotationFromQuaternion(camQuat);
-              LCam.updateMatrix();
+            let lineCam = new THREE.Line(geometryLine);
+            scene.add(lineCam);
+            lineCam.material.color.setHex(0x00ffff);
 
-              const intersections3 = getIntersections(LCam);
-              if (intersections3.length > 0) {
-                const intersection = intersections3[0];
+            lineCam.name = "lineCam";
+            lineCam.scale.z = 5;
+          }
 
-                const object = intersection.object;
-                if (object.name !== "boat") {
-                  object.material.emissive.r = 0.5;
-                  intersected.push(object);
-                  if (heatMap) {
-                    let dot2 = scene.getObjectByName("dot");
-                    let dotGroup2 = scene.getObjectByName("dotGroup");
-                    let dot3 = dot2.clone();
-                    dot3.material = dot3.material.clone();
-                    // console.log(intersection);
-                    dot3.position.x =
-                      Math.round(
-                        (1 / heatMapResolution) * intersection.point.x
-                      ) /
-                      (1 / heatMapResolution);
-                    //console.log(dot3.position.x);
-                    dot3.position.y =
-                      Math.round(
-                        (1 / heatMapResolution) * intersection.point.y
-                      ) /
-                      (1 / heatMapResolution);
-                    dot3.position.z =
-                      Math.round(
-                        (1 / heatMapResolution) * intersection.point.z
-                      ) /
-                      (1 / heatMapResolution);
-                    dotGroup2.children.forEach(function (child) {
-                      if (child.position.equals(dot3.position)) {
-                        let color = new THREE.Color(child.material.color);
-                        if (color.r === 0 && color.g === 0 && color.b === 1) {
-                          color.r = 0;
-                          color.g = Math.round(10 * (color.g + 0.1)) / 10;
-                          color.b = Math.round(10 * (color.b - 0.1)) / 10;
-                        } else if (
-                          color.r === 0 &&
-                          color.g < 1 &&
-                          color.b < 1
-                        ) {
-                          color.r = 0;
-                          color.g = Math.round(10 * (color.g + 0.1)) / 10;
-                          color.b = Math.round(10 * (color.b - 0.1)) / 10;
-                        } else if (
-                          color.r === 0 &&
-                          color.b === 0 &&
-                          color.g === 1
-                        ) {
-                          color.r = Math.round(10 * (color.r + 0.1)) / 10;
-                          color.b = 0;
-                          color.g = 1;
-                        } else if (
-                          color.r < 1 &&
-                          color.g === 1 &&
-                          color.b === 0
-                        ) {
-                          color.r = Math.round(10 * (color.r + 0.1)) / 10;
-                          color.b = 0;
-                          color.g = 1;
-                        } else if (
-                          color.r === 1 &&
-                          color.g === 1 &&
-                          color.b === 0
-                        ) {
-                          color.r = 1;
-                          color.b = 0;
-                          color.g = Math.round(10 * (color.g - 0.1)) / 10;
-                          // console.log("yellow");
-                        } else if (
-                          color.r === 1 &&
-                          color.g > 0 &&
-                          color.b === 0
-                        ) {
-                          color.r = 1;
-                          color.b = 0;
-                          color.g = Math.round(10 * (color.g - 0.1)) / 10;
-                          // console.log("yellow");
-                        } else if (
-                          color.r === 1 &&
-                          color.g === 0 &&
-                          color.b === 0
-                        ) {
-                          color.r = 1;
-                          color.b = 0;
-                          color.g = 0;
-                          // console.log("red");
-                        }
-                        child.remove();
-                        dot3.material.color.set(color);
-                        dotGroup2.add(dot3);
-                        dotGroup2.visible = false;
-                        let i = Array.from(dotGroup2.children).indexOf(child);
-                        let matrix = new THREE.Matrix4();
-                        matrix.setPosition(
-                          dot3.position.x,
-                          dot3.position.y,
-                          dot3.position.z
-                        );
-                        boxes.setMatrixAt(i, matrix);
+          /////
+          //Temp fix, usually not in if statrement
+          if (heatMap) {
+            var dotGeometry = new THREE.BufferGeometry();
+            dotGeometry.setAttribute(
+              "position",
+              new THREE.Float32BufferAttribute([0, 0, 0], 3)
+            );
+            var dotMaterial = new THREE.PointsMaterial({
+              size: heatMapResolution,
+              color: 0x0000ff,
+            });
 
-                        boxes.setColorAt(i, color);
+            var dot = new THREE.Points(dotGeometry, dotMaterial);
+            dot.name = "dot";
+            dot.position.x = 1000;
+            let dotGroup = new THREE.Group();
+            dotGroup.name = "dotGroup";
+            dotGroup.add(dot);
+            scene.add(dotGroup);
+            dotGroup.visible = false;
 
-                        boxes.instanceMatrix.needsUpdate = true;
-                        boxes.instanceColor.needsUpdate = true;
-                      } else {
-                        dotGroup2.add(dot3);
+            var boxGeometry = new THREE.BoxGeometry(
+              heatMapResolution,
+              heatMapResolution,
+              heatMapResolution
+            );
+            // boxGeometry.renderOrder = 99;
+            var boxMaterial = new THREE.MeshPhysicalMaterial({
+              transparent: true,
+              opacity: 1,
+              depthTest: true,
+              depthWrite: true,
+              side: THREE.DoubleSide,
+            });
+            boxes = new THREE.InstancedMesh(boxGeometry, boxMaterial, 60000);
+            boxes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            scene.add(boxes);
+            boxes.frustumCulled = false;
+            //boxes.renderOrder = -99;
+            for (let i = 0; i < boxes.count; i++) {
+              let x = 1000;
+              let y = 0;
+              let z = 0;
+              let matrix = new THREE.Matrix4();
+              matrix.setPosition(x, y, z);
+              boxes.setMatrixAt(i, matrix);
+              boxes.instanceMatrix.needsUpdate = true;
+              //boxes.instanceColor.needsUpdate = true;
+            }
+          }
+        }
+
+        if (heatMap) {
+          const positionAttribute = boxes.geometry.getAttribute("matrix");
+          const colorAttribute = boxes.geometry.getAttribute("color");
+          //positionAttribute.needsUpdate = true; // required after the first render
+          //colorAttribute.needsUpdate = true;
+        }
+        if (logLineHands) {
+          let LC1 = scene.getObjectByName("line1");
+          let LC2 = scene.getObjectByName("line2");
+          if (LC1 !== undefined) {
+            LC1.position.x = con1Pos.x;
+            LC1.position.y = con1Pos.y;
+            LC1.position.z = con1Pos.z;
+            con1Quat.normalize();
+            LC1.setRotationFromQuaternion(con1Quat);
+            LC1.updateMatrix();
+            LC2.position.x = con2Pos.x;
+            LC2.position.y = con2Pos.y;
+            LC2.position.z = con2Pos.z;
+            con2Quat.normalize();
+            LC2.setRotationFromQuaternion(con2Quat);
+            LC2.updateMatrix();
+
+            const intersections1 = getIntersections(LC1);
+            const intersections2 = getIntersections(LC2);
+            if (intersections1.length > 0) {
+              const intersection = intersections1[0];
+              const object = intersection.object;
+              if (object.name !== "boat") {
+                object.material.emissive.r = 0.5;
+                intersected.push(object);
+                if (heatMap) {
+                  let dot2 = scene.getObjectByName("dot");
+                  let dotGroup2 = scene.getObjectByName("dotGroup");
+                  let dot3 = dot2.clone();
+                  dot3.material = dot3.material.clone();
+                  // console.log(intersection);
+                  dot3.position.x =
+                    Math.round((1 / heatMapResolution) * intersection.point.x) /
+                    (1 / heatMapResolution);
+                  //console.log(dot3.position.x);
+                  dot3.position.y =
+                    Math.round((1 / heatMapResolution) * intersection.point.y) /
+                    (1 / heatMapResolution);
+                  dot3.position.z =
+                    Math.round((1 / heatMapResolution) * intersection.point.z) /
+                    (1 / heatMapResolution);
+                  dotGroup2.children.forEach(function (child) {
+                    if (child.position.equals(dot3.position)) {
+                      let color = new THREE.Color(child.material.color);
+                      if (color.r === 0 && color.g === 0 && color.b === 1) {
+                        color.r = 0;
+                        color.g = Math.round(10 * (color.g + 0.1)) / 10;
+                        color.b = Math.round(10 * (color.b - 0.1)) / 10;
+                      } else if (color.r === 0 && color.g < 1 && color.b < 1) {
+                        color.r = 0;
+                        color.g = Math.round(10 * (color.g + 0.1)) / 10;
+                        color.b = Math.round(10 * (color.b - 0.1)) / 10;
+                      } else if (
+                        color.r === 0 &&
+                        color.b === 0 &&
+                        color.g === 1
+                      ) {
+                        color.r = Math.round(10 * (color.r + 0.1)) / 10;
+                        color.b = 0;
+                        color.g = 1;
+                      } else if (
+                        color.r < 1 &&
+                        color.g === 1 &&
+                        color.b === 0
+                      ) {
+                        color.r = Math.round(10 * (color.r + 0.1)) / 10;
+                        color.b = 0;
+                        color.g = 1;
+                      } else if (
+                        color.r === 1 &&
+                        color.g === 1 &&
+                        color.b === 0
+                      ) {
+                        color.r = 1;
+                        color.b = 0;
+                        color.g = Math.round(10 * (color.g - 0.1)) / 10;
+                        //  console.log("yellow");
+                      } else if (
+                        color.r === 1 &&
+                        color.g > 0 &&
+                        color.b === 0
+                      ) {
+                        color.r = 1;
+                        color.b = 0;
+                        color.g = Math.round(10 * (color.g - 0.1)) / 10;
+                        //  console.log("yellow");
+                      } else if (
+                        color.r === 1 &&
+                        color.g === 0 &&
+                        color.b === 0
+                      ) {
+                        color.r = 1;
+                        color.b = 0;
+                        color.g = 0;
+                        //  console.log("red");
                       }
-                    });
-                  }
-                }
+                      child.remove();
+                      dot3.material.color.set(color);
+                      dotGroup2.add(dot3);
+                      let i = Array.from(dotGroup2.children).indexOf(child);
+                      let matrix = new THREE.Matrix4();
+                      matrix.setPosition(
+                        dot3.position.x,
+                        dot3.position.y,
+                        dot3.position.z
+                      );
+                      boxes.setMatrixAt(i, matrix);
+                      //let color2 = new THREE.Color()
+                      //console.log(boxes);
+                      boxes.setColorAt(i, color);
 
-                LCam.scale.z = intersection.distance;
-              } else {
-                LCam.scale.z = 5;
+                      boxes.instanceMatrix.needsUpdate = true;
+                      boxes.instanceColor.needsUpdate = true;
+                    } else {
+                      dotGroup2.add(dot3);
+                    }
+                  });
+                }
               }
+              LC1.scale.z = intersection.distance;
+            } else {
+              LC1.scale.z = 5;
+            }
+            if (intersections2.length > 0) {
+              const intersection = intersections2[0];
+
+              const object = intersection.object;
+              if (object.name !== "boat") {
+                object.material.emissive.r = 0.5;
+                intersected.push(object);
+                if (heatMap) {
+                  let dot2 = scene.getObjectByName("dot");
+                  let dotGroup2 = scene.getObjectByName("dotGroup");
+                  let dot3 = dot2.clone();
+                  dot3.material = dot3.material.clone();
+                  // console.log(intersection);
+                  dot3.position.x =
+                    Math.round((1 / heatMapResolution) * intersection.point.x) /
+                    (1 / heatMapResolution);
+                  //console.log(dot3.position.x);
+                  dot3.position.y =
+                    Math.round((1 / heatMapResolution) * intersection.point.y) /
+                    (1 / heatMapResolution);
+                  dot3.position.z =
+                    Math.round((1 / heatMapResolution) * intersection.point.z) /
+                    (1 / heatMapResolution);
+                  dotGroup2.children.forEach(function (child) {
+                    if (child.position.equals(dot3.position)) {
+                      let color = new THREE.Color(child.material.color);
+                      if (color.r === 0 && color.g === 0 && color.b === 1) {
+                        color.r = 0;
+                        color.g = Math.round(10 * (color.g + 0.1)) / 10;
+                        color.b = Math.round(10 * (color.b - 0.1)) / 10;
+                      } else if (color.r === 0 && color.g < 1 && color.b < 1) {
+                        color.r = 0;
+                        color.g = Math.round(10 * (color.g + 0.1)) / 10;
+                        color.b = Math.round(10 * (color.b - 0.1)) / 10;
+                      } else if (
+                        color.r === 0 &&
+                        color.b === 0 &&
+                        color.g === 1
+                      ) {
+                        color.r = Math.round(10 * (color.r + 0.1)) / 10;
+                        color.b = 0;
+                        color.g = 1;
+                      } else if (
+                        color.r < 1 &&
+                        color.g === 1 &&
+                        color.b === 0
+                      ) {
+                        color.r = Math.round(10 * (color.r + 0.1)) / 10;
+                        color.b = 0;
+                        color.g = 1;
+                      } else if (
+                        color.r === 1 &&
+                        color.g === 1 &&
+                        color.b === 0
+                      ) {
+                        color.r = 1;
+                        color.b = 0;
+                        color.g = Math.round(10 * (color.g - 0.1)) / 10;
+                        // console.log("yellow");
+                      } else if (
+                        color.r === 1 &&
+                        color.g > 0 &&
+                        color.b === 0
+                      ) {
+                        color.r = 1;
+                        color.b = 0;
+                        color.g = Math.round(10 * (color.g - 0.1)) / 10;
+                        // console.log("yellow");
+                      } else if (
+                        color.r === 1 &&
+                        color.g === 0 &&
+                        color.b === 0
+                      ) {
+                        color.r = 1;
+                        color.b = 0;
+                        color.g = 0;
+                        //  console.log("red");
+                      }
+                      child.remove();
+                      dot3.material.color.set(color);
+                      dotGroup2.add(dot3);
+                      dotGroup2.visible = false;
+                      let i = Array.from(dotGroup2.children).indexOf(child);
+                      let matrix = new THREE.Matrix4();
+                      matrix.setPosition(
+                        dot3.position.x,
+                        dot3.position.y,
+                        dot3.position.z
+                      );
+                      boxes.setMatrixAt(i, matrix);
+                      //let color2 = new THREE.Color()
+                      //console.log(boxes);
+                      boxes.setColorAt(i, color);
+
+                      boxes.instanceMatrix.needsUpdate = true;
+                      boxes.instanceColor.needsUpdate = true;
+                    } else {
+                      dotGroup2.add(dot3);
+                    }
+                  });
+                }
+              }
+              LC2.scale.z = intersection.distance;
+            } else {
+              LC2.scale.z = 5;
+            }
+          }
+        }
+        if (logLineHead) {
+          let LCam = scene.getObjectByName("lineCam");
+          if (LCam !== undefined) {
+            LCam.position.x = camPos.x;
+            LCam.position.y = camPos.y + 0.4;
+            LCam.position.z = camPos.z;
+            camQuat.normalize();
+            LCam.setRotationFromQuaternion(camQuat);
+            LCam.updateMatrix();
+
+            const intersections3 = getIntersections(LCam);
+            if (intersections3.length > 0) {
+              const intersection = intersections3[0];
+
+              const object = intersection.object;
+              if (object.name !== "boat") {
+                object.material.emissive.r = 0.5;
+                intersected.push(object);
+                if (heatMap) {
+                  let dot2 = scene.getObjectByName("dot");
+                  let dotGroup2 = scene.getObjectByName("dotGroup");
+                  let dot3 = dot2.clone();
+                  dot3.material = dot3.material.clone();
+                  // console.log(intersection);
+                  dot3.position.x =
+                    Math.round((1 / heatMapResolution) * intersection.point.x) /
+                    (1 / heatMapResolution);
+                  //console.log(dot3.position.x);
+                  dot3.position.y =
+                    Math.round((1 / heatMapResolution) * intersection.point.y) /
+                    (1 / heatMapResolution);
+                  dot3.position.z =
+                    Math.round((1 / heatMapResolution) * intersection.point.z) /
+                    (1 / heatMapResolution);
+                  dotGroup2.children.forEach(function (child) {
+                    if (child.position.equals(dot3.position)) {
+                      let color = new THREE.Color(child.material.color);
+                      if (color.r === 0 && color.g === 0 && color.b === 1) {
+                        color.r = 0;
+                        color.g = Math.round(10 * (color.g + 0.1)) / 10;
+                        color.b = Math.round(10 * (color.b - 0.1)) / 10;
+                      } else if (color.r === 0 && color.g < 1 && color.b < 1) {
+                        color.r = 0;
+                        color.g = Math.round(10 * (color.g + 0.1)) / 10;
+                        color.b = Math.round(10 * (color.b - 0.1)) / 10;
+                      } else if (
+                        color.r === 0 &&
+                        color.b === 0 &&
+                        color.g === 1
+                      ) {
+                        color.r = Math.round(10 * (color.r + 0.1)) / 10;
+                        color.b = 0;
+                        color.g = 1;
+                      } else if (
+                        color.r < 1 &&
+                        color.g === 1 &&
+                        color.b === 0
+                      ) {
+                        color.r = Math.round(10 * (color.r + 0.1)) / 10;
+                        color.b = 0;
+                        color.g = 1;
+                      } else if (
+                        color.r === 1 &&
+                        color.g === 1 &&
+                        color.b === 0
+                      ) {
+                        color.r = 1;
+                        color.b = 0;
+                        color.g = Math.round(10 * (color.g - 0.1)) / 10;
+                        // console.log("yellow");
+                      } else if (
+                        color.r === 1 &&
+                        color.g > 0 &&
+                        color.b === 0
+                      ) {
+                        color.r = 1;
+                        color.b = 0;
+                        color.g = Math.round(10 * (color.g - 0.1)) / 10;
+                        // console.log("yellow");
+                      } else if (
+                        color.r === 1 &&
+                        color.g === 0 &&
+                        color.b === 0
+                      ) {
+                        color.r = 1;
+                        color.b = 0;
+                        color.g = 0;
+                        // console.log("red");
+                      }
+                      child.remove();
+                      dot3.material.color.set(color);
+                      dotGroup2.add(dot3);
+                      dotGroup2.visible = false;
+                      let i = Array.from(dotGroup2.children).indexOf(child);
+                      let matrix = new THREE.Matrix4();
+                      matrix.setPosition(
+                        dot3.position.x,
+                        dot3.position.y,
+                        dot3.position.z
+                      );
+                      boxes.setMatrixAt(i, matrix);
+
+                      boxes.setColorAt(i, color);
+
+                      boxes.instanceMatrix.needsUpdate = true;
+                      boxes.instanceColor.needsUpdate = true;
+                    } else {
+                      dotGroup2.add(dot3);
+                    }
+                  });
+                }
+              }
+
+              LCam.scale.z = intersection.distance;
+            } else {
+              LCam.scale.z = 5;
             }
           }
         }
@@ -7463,20 +8446,577 @@ function endLogFunction() {
     var position1 = new THREE.Vector3(-1001, 0, -1001);
     var position2 = new THREE.Vector3(-1002, 0, -1002);
     var quaternion = new THREE.Quaternion(0, 0, 0, 0);
-    physics.setMeshPositionAndRotation(cubeGroup, position, quaternion, i);
+    phy.change({
+      name: "cube" + i,
+      pos: [position.x, position.y, position.z],
+    });
+    // physics.setMeshPositionAndRotation(cubeGroup, position, quaternion, i);
     let index1 = 2 * i;
     let index2 = 2 * i + 1;
-    physics.setMeshPositionAndRotation(
-      controllerGroup,
-      position2,
-      quaternion,
-      index1
-    );
-    physics.setMeshPositionAndRotation(
-      controllerGroup,
-      position2,
-      quaternion,
-      index2
-    );
+    phy.change({
+      name: "controller" + index1,
+      pos: [position1.x, position1.y, position1.z],
+    });
+    phy.change({
+      name: "controller" + index2,
+      pos: [position2.x, position2.y, position2.z],
+    });
   }
+}
+
+function labReset() {
+  /*
+    stlButton.material.color.setHex(selectedColor);
+    wireframeButton.material.color.setHex(unselectedColor);
+    gcodeButton.material.color.setHex(unselectedColor);
+    gcodeExtrudeButton.material.color.setHex(unselectedColor);
+    gcodeTravelButton.material.color.setHex(unselectedColor);
+    gcodeSupportButton.material.color.setHex(unselectedColor);
+    gcodeTreeButton.material.color.setHex(unselectedColor);
+
+    stlMeshBoat.visible = true;
+    wireframeMeshBoat.visible = false;
+    gcodeMeshBoat.visible = false;
+    gcodeMeshBoatLayer.visible = false;
+
+    stlMeshTest.visible = true;
+    wireframeMeshTest.visible = false;
+    gcodeMeshTest.visible = false;
+    gcodeMeshTestTree.visible = false;
+    gcodeMeshTestLayer.visible = false;
+
+    stlMeshOwl.visible = true;
+    wireframeMeshOwl.visible = false;
+    gcodeMeshOwl.visible = false;
+    gcodeMeshOwlTree.visible = false;
+    gcodeMeshOwlLayer.visible = false;
+    */
+
+  ender3Group.visible = false;
+  lineFilament.visible = false;
+  //desk.visible = !desk.visible;
+  printerButtonGroup.visible = false;
+
+  boatMeshes.visible = true;
+  console.log("3D Lab Reset");
+}
+
+function labOff() {
+  ender3Group.visible = false;
+  lineFilament.visible = false;
+  //desk.visible = !desk.visible;
+  printerButtonGroup.visible = false;
+  buttonGroup.visible = false;
+  consoleMesh.visible = false;
+
+  boatMeshes.visible = false;
+  owlMeshes.visible = false;
+  testMeshes.visible = false;
+
+  for (let i = 0; i < meshNumber; i++) {
+    phy.remove("mesh" + i);
+  }
+  meshNumber = 0;
+  for (let i = 0; i < planeNumber; i++) {
+    phy.remove("plane" + i);
+  }
+  planeNumber = 0;
+  count = 0;
+
+  console.log("3D Lab Hidden");
+}
+
+function startDemo() {
+  // set physics engine option
+  phy.set({ substep: 2, gravity: [0, -9.81, 0], fps: 90 });
+}
+
+function processMeshes(timestamp, frame) {
+  const referenceSpace = renderer.xr.getReferenceSpace();
+  if (frame.detectedMeshes) {
+    allMeshes.forEach((meshContext, mesh) => {
+      // if a previous mesh is no longer reported
+      if (!frame.detectedMeshes.has(mesh)) {
+        // mesh was removed
+        allMeshes.delete(mesh);
+        console.debug("Mesh no longer tracked, id=" + meshContext.id);
+
+        scene.remove(meshContext.mesh);
+        scene.remove(meshContext.wireframe);
+      }
+    });
+    // compare all incoming meshes with our internal state
+    frame.detectedMeshes.forEach((mesh) => {
+      const meshPose = frame.getPose(mesh.meshSpace, referenceSpace);
+      let meshMesh;
+      let wireframeMesh;
+
+      // this is a mesh we've seen before
+
+      if (allMeshes.has(mesh)) {
+        /*
+        // may have been updated:
+        const meshContext = allMeshes.get(mesh);
+        meshMesh = meshContext.mesh;
+        wireframeMesh = meshContext.wireframe;
+
+        if (meshContext.timestamp < mesh.lastChangedTime) {
+          // the mesh was updated!
+          meshContext.timestamp = mesh.lastChangedTime;
+
+          const geometry = createGeometry(mesh.vertices, mesh.indices);
+          meshContext.mesh.geometry.dispose();
+          meshContext.mesh.geometry = geometry;
+          meshContext.wireframe.geometry.dispose();
+          meshContext.wireframe.geometry = geometry;
+        }
+       */
+      } else {
+        // new mesh
+
+        // Create geometry:
+        // const geometry = createGeometry(mesh.vertices, mesh.indices);
+        const vertices = new Float32Array(mesh.vertices);
+        const indices = new Uint32Array(mesh.indices);
+        const geometry = createGeometry(vertices, indices);
+        geometry.computeBoundingBox();
+
+        const x = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+        const y = geometry.boundingBox.max.y - geometry.boundingBox.min.y;
+        const z = geometry.boundingBox.max.z - geometry.boundingBox.min.z;
+        const geometryBoundingBox = new THREE.BoxGeometry(x, y, z);
+
+        wireframeMesh = new THREE.Mesh(geometry, wireframeMaterial);
+        wireframeMesh.matrixAutoUpdate = false;
+        var matrix = new Matrix4();
+        matrix.fromArray(meshPose.transform.matrix);
+        var position = new THREE.Vector3();
+        position.setFromMatrixPosition(matrix);
+        var rotation = new THREE.Euler();
+
+        // Set rotation from the matrix
+        rotation.setFromRotationMatrix(matrix);
+
+        phy.add({
+          name: "wireframeMesh" + wireframemeshNumber,
+          type: "mesh",
+          mesh: wireframeMesh,
+          pos: [position.x, position.y, position.z],
+          rot: [
+            (rotation.x * 180) / Math.PI,
+            (rotation.y * 180) / Math.PI,
+            (rotation.z * 180) / Math.PI,
+          ],
+          mass: 0,
+          debug: false,
+          matrix: wireframeMesh.matrix,
+          shadow: false,
+          // visible: false
+        });
+        wireframemeshNumber = wireframemeshNumber + 1;
+
+        let count = 0;
+        for (let i = 0; i < ballsLab; i++) {
+          const material = new THREE.MeshLambertMaterial();
+          var ballColor = i % 3;
+          if (ballColor == 0) {
+            material.color.setHex(0xb0b3b2);
+          } else if (ballColor == 1) {
+            material.color.setHex(0x231f20);
+          } else if (ballColor == 2) {
+            material.color.setHex(0xeec629);
+          }
+          //count = count + 1;
+          phy.add({
+            name: "sphere" + i,
+            type: "sphere",
+            size: [0.05],
+            widthSegments: 4,
+            heightSegments: 4,
+            pos: [Math.random() * 3, 2, Math.random() * 3],
+            mass: 0.1,
+            material: material,
+            restitution: 1,
+            friction: 0,
+          });
+        }
+        const material2 = new THREE.MeshLambertMaterial({
+          //wireframe: true,
+          colorWrite: false,
+          //transparent: true,
+          //opacity: 0,
+          renderOrder: 2,
+          //receiveShadow: true,
+        });
+
+        const material3 = new THREE.ShadowMaterial({
+          color: 0x000000,
+          transparent: false,
+          opacity: 0,
+          renderOrder: 3,
+        });
+
+        // create a buffer geometry
+        // create a buffer geometry
+        let occlusionMesh = new THREE.Mesh(geometry, material2);
+        occlusionMesh.position.setFromMatrixPosition(matrix);
+        occlusionMesh.quaternion.setFromRotationMatrix(matrix);
+        occlusionMesh.name = "Occlusion Mesh";
+        let shadowMesh = new THREE.Mesh(geometry, material3);
+        shadowMesh.position.setFromMatrixPosition(matrix);
+        shadowMesh.quaternion.setFromRotationMatrix(matrix);
+        shadowMesh.receiveShadow = true;
+        shadowMesh.name = "Shadow Mesh";
+        shadowGroup.add(shadowMesh);
+        occlusionGroup.add(occlusionMesh);
+        occlusionMesh.visible = true;
+        shadowMesh.visible = true;
+        socket.emit("addMeshDetectionPhysicsToServer", {
+          vertices: mesh.vertices,
+          indices: mesh.indices,
+          matrix: matrix,
+        });
+      }
+    });
+  }
+  button4Active = false;
+  enableBalls = true;
+}
+
+function processMeshesToClient(data) {
+  let wireframeMesh;
+  const vertices = new Float32Array(data.vertices);
+  const indices = new Uint32Array(data.indices);
+  let matrix = new THREE.Matrix4();
+  matrix = data.matrix;
+  const geometry = createGeometry(vertices, indices);
+  geometry.computeBoundingBox();
+
+  const x = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+  const y = geometry.boundingBox.max.y - geometry.boundingBox.min.y;
+  const z = geometry.boundingBox.max.z - geometry.boundingBox.min.z;
+  const geometryBoundingBox = new THREE.BoxGeometry(x, y, z);
+
+  wireframeMesh = new THREE.Mesh(geometry, wireframeMaterial);
+  wireframeMesh.matrixAutoUpdate = false;
+
+  var position = new THREE.Vector3();
+  position.setFromMatrixPosition(matrix);
+  var rotation = new THREE.Euler();
+
+  // Set rotation from the matrix
+  rotation.setFromRotationMatrix(matrix);
+  console.log(wireframeMesh);
+
+  phy.add({
+    name: "wireframeMesh" + wireframemeshNumber,
+    type: "mesh",
+    mesh: wireframeMesh,
+    pos: [position.x, position.y, position.z],
+    rot: [
+      (rotation.x * 180) / Math.PI,
+      (rotation.y * 180) / Math.PI,
+      (rotation.z * 180) / Math.PI,
+    ],
+    mass: 0,
+    debug: false,
+    matrix: wireframeMesh.matrix,
+  });
+wireframemeshNumber = wireframemeshNumber + 1;
+  let count = 0;
+  for (let i = 0; i < ballsLab; i++) {
+    const material = new THREE.MeshLambertMaterial();
+    var ballColor = i % 3;
+    if (ballColor == 0) {
+      material.color.setHex(0xb0b3b2);
+    } else if (ballColor == 1) {
+      material.color.setHex(0x231f20);
+    } else if (ballColor == 2) {
+      material.color.setHex(0xeec629);
+    }
+    //count = count + 1;
+    phy.add({
+      name: "sphere" + i,
+      type: "sphere",
+      size: [0.05],
+      pos: [Math.random() * 3, 2, Math.random() * 3],
+      mass: 0.1,
+      material: material,
+      restitution: 1,
+      friction: 0,
+    });
+  }
+  const material2 = new THREE.MeshLambertMaterial({
+    //wireframe: true,
+    colorWrite: true,
+    //transparent: true,
+    //opacity: 0,
+    renderOrder: 2,
+    //receiveShadow: true,
+  });
+
+  const material3 = new THREE.ShadowMaterial({
+    color: 0x444444,
+    transparent: false,
+    opacity: 0.6,
+    renderOrder: 3,
+  });
+
+  // create a buffer geometry
+  let occlusionMesh = new THREE.Mesh(geometry, material2);
+  occlusionMesh.position.setFromMatrixPosition(matrix);
+  occlusionMesh.quaternion.setFromRotationMatrix(matrix);
+  occlusionMesh.name = "Occlusion Mesh";
+  let shadowMesh = new THREE.Mesh(geometry, material3);
+  shadowMesh.position.setFromMatrixPosition(matrix);
+  shadowMesh.quaternion.setFromRotationMatrix(matrix);
+  shadowMesh.receiveShadow = true;
+  shadowMesh.name = "Shadow Mesh";
+  shadowGroup.add(shadowMesh);
+  occlusionGroup.add(occlusionMesh);
+
+  button4Active = false;
+  enableBalls = true;
+}
+
+function squeezeController(controller) {
+  // Get the position and rotation of the controller
+  const controllerPosition = new THREE.Vector3();
+  const controllerRotation = new THREE.Quaternion();
+  controller.getWorldPosition(controllerPosition);
+  controller.getWorldQuaternion(controllerRotation);
+
+  // Assuming your object is attached to the controller
+  // You can get its position relative to the world by applying its world matrix
+  const objectPosition = new THREE.Vector3();
+  objectPosition.setFromMatrixPosition(centerOfRotation.matrixWorld);
+
+  // To get the rotation, let's create a new matrix with the rotation from the controller
+  const controllerRotationMatrix = new THREE.Matrix4();
+  controllerRotationMatrix.makeRotationFromQuaternion(controllerRotation);
+
+  const objectRotationQuaternion = new THREE.Quaternion();
+  const objectRotationEuler = new THREE.Euler();
+  objectRotationQuaternion
+    .copy(controllerRotation)
+    .multiply(centerOfRotation.quaternion);
+  objectRotationEuler.setFromQuaternion(objectRotationQuaternion);
+  socket.emit("centerOfRotationToServer", {
+    CORposX: objectPosition.x,
+    CORposY: objectPosition.y,
+    CORposZ: objectPosition.z,
+    CORrotX: objectRotationEuler.x,
+    CORrotY: objectRotationEuler.y,
+    CORrotZ: objectRotationEuler.z,
+  });
+}
+
+function createXRButton(group, size, text, position, rotation, color, onClick) {
+  // Create a button geometry
+  const buttonGeometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+  const buttonMaterial = new THREE.MeshLambertMaterial({ color: color });
+  const button = new THREE.Mesh(buttonGeometry, buttonMaterial);
+
+  // Set button position
+  button.position.copy(position);
+  button.rotation.set(rotation.x, rotation.y, rotation.z);
+
+  // Add button to the scene
+  group.add(button);
+  // Add event listener to the button
+  button.onClick = onClick;
+
+  // Add interaction handler to the button
+  button.addEventListener("pointerclick", function (event) {
+    onClick();
+  });
+
+  // Create a text geometry
+  const buttonText = createText(text, 0.1);
+  button.add(buttonText);
+
+  // Position the text above the button
+  buttonText.position.add(new THREE.Vector3(0, 0, 0.1));
+}
+
+function dropBalls() {
+  drop = drop + 1;
+  if (drop === dropRate) {
+    drop = 0;
+    if (count < ballsGalton - 1 && enablePhysics) {
+      const material = new THREE.MeshLambertMaterial();
+      count = count + 1;
+      phy.add({
+        name: "sphere" + count,
+        type: "sphere",
+        size: [0.013],
+        pos: [1.65, 2.5, Math.random() * 0.5 + 1.5],
+        mass: 1000,
+        material: material,
+        restitution: 0.85,
+        friction: 0.5,
+        linearVelocity: [0, 0, 0],
+      });
+    }
+  }
+}
+
+function handlePainter(controller) {
+  controller.updateMatrixWorld(true);
+
+  const userData = controller.userData;
+  const painter = userData.painter;
+
+  const pivot = controller.getObjectByName("pivot");
+
+  if (userData.isSqueezing === true) {
+    const delta = (controller.position.y - userData.positionAtSqueezeStart) * 5;
+    const scale = Math.max(0.1, userData.scaleAtSqueezeStart + delta);
+
+    pivot.scale.setScalar(scale);
+    painter.setSize(scale);
+  }
+
+  cursor.setFromMatrixPosition(pivot.matrixWorld);
+
+  if (userData.isSelecting === true) {
+    painter.lineTo(cursor);
+    painter.update();
+    socket.emit("updatePaintToServer", {
+      cursor: cursor,
+      controllerName: controller.name,
+    });
+  }
+}
+
+function uitest() {
+  const container = new ThreeMeshUI.Block({
+    width: 1.2,
+    height: 0.7,
+    padding: 0.2,
+    fontFamily: "Roboto-msdf.json",
+    fontTexture:
+      "https://cdn.glitch.global/75a9e89d-a789-4b11-8971-b706f6ebc90d/Roboto-msdf.png?v=1712865747602",
+  });
+
+  //
+
+  const text = new ThreeMeshUI.Text({
+    content: "Some text to be displayed",
+  });
+
+  container.add(text);
+  container.position.set(0, 2, 2);
+  container.rotation.y = -Math.PI / 2;
+
+  // scene is a THREE.Scene (see three.js)
+  scene.add(container);
+}
+
+function makePanel() {
+  // Container block, in which we put the two buttons.
+  // We don't define width and height, it will be set automatically from the children's dimensions
+  // Note that we set contentDirection: "row-reverse", in order to orient the buttons horizontally
+
+  const container = new ThreeMeshUI.Block({
+    justifyContent: "center",
+    contentDirection: "row-reverse",
+    fontFamily: "Roboto-msdf.json",
+    fontTexture:
+      "https://cdn.glitch.global/75a9e89d-a789-4b11-8971-b706f6ebc90d/Roboto-msdf.png?v=1712865747602",
+    fontSize: 0.07,
+    padding: 0.02,
+    borderRadius: 0.11,
+  });
+
+  container.position.set(0, 0.6, -1.2);
+  container.rotation.x = -0.55;
+  scene.add(container);
+
+  // BUTTONS
+
+  // We start by creating objects containing options that we will use with the two buttons,
+  // in order to write less code.
+
+  const buttonOptions = {
+    width: 0.4,
+    height: 0.15,
+    justifyContent: "center",
+    offset: 0.05,
+    margin: 0.02,
+    borderRadius: 0.075,
+  };
+
+  // Options for component.setupState().
+  // It must contain a 'state' parameter, which you will refer to with component.setState( 'name-of-the-state' ).
+
+  const hoveredStateAttributes = {
+    state: "hovered",
+    attributes: {
+      offset: 0.035,
+      backgroundColor: new THREE.Color(0x999999),
+      backgroundOpacity: 1,
+      fontColor: new THREE.Color(0xffffff),
+    },
+  };
+
+  const idleStateAttributes = {
+    state: "idle",
+    attributes: {
+      offset: 0.035,
+      backgroundColor: new THREE.Color(0x666666),
+      backgroundOpacity: 0.3,
+      fontColor: new THREE.Color(0xffffff),
+    },
+  };
+
+  // Buttons creation, with the options objects passed in parameters.
+
+  const buttonNext = new ThreeMeshUI.Block(buttonOptions);
+  const buttonPrevious = new ThreeMeshUI.Block(buttonOptions);
+
+  // Add text to buttons
+
+  buttonNext.add(new ThreeMeshUI.Text({ content: "next" }));
+
+  buttonPrevious.add(new ThreeMeshUI.Text({ content: "previous" }));
+
+  // Create states for the buttons.
+  // In the loop, we will call component.setState( 'state-name' ) when mouse hover or click
+
+  const selectedAttributes = {
+    offset: 0.02,
+    backgroundColor: new THREE.Color(0x777777),
+    fontColor: new THREE.Color(0x222222),
+  };
+
+  buttonNext.setupState({
+    state: "selected",
+    attributes: selectedAttributes,
+    onSet: () => {
+      currentMesh = (currentMesh + 1) % 3;
+      showMesh(currentMesh);
+    },
+  });
+  buttonNext.setupState(hoveredStateAttributes);
+  buttonNext.setupState(idleStateAttributes);
+
+  //
+
+  buttonPrevious.setupState({
+    state: "selected",
+    attributes: selectedAttributes,
+    onSet: () => {
+      currentMesh -= 1;
+      if (currentMesh < 0) currentMesh = 2;
+      showMesh(currentMesh);
+    },
+  });
+  buttonPrevious.setupState(hoveredStateAttributes);
+  buttonPrevious.setupState(idleStateAttributes);
+
+  //
+
+  container.add(buttonNext, buttonPrevious);
+  //objsToTest.push( buttonNext, buttonPrevious );
 }
